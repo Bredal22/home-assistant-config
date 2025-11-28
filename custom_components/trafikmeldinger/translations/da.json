@@ -1,0 +1,189 @@
+{
+  "title": "Trafikmeldinger",
+  "entity_component": {
+    "_": {
+      "name": "Trafikmeldinger"
+    }
+  },
+  "device": {
+    "trafikmeldinger": {
+      "name": "Trafikmeldinger"
+    }
+  },
+  "config": {
+    "abort": {
+      "already_configured": "Enheden er allerede konfigureret"
+    },
+    "error": {
+      "unknown": "Uventet fejl"
+    },
+    "step": {
+      "user": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "region": "Region",
+          "transport_type": "Transporttype",
+          "max_time_back": "Hent kun trafikmeldinger som er max timer gamle",
+          "max_time_back_concluded": "Vis kun afsluttet trafikmeldinger som er max timer gamle",
+          "max_row_fetch": "Hent max antal trafikmeldinger",
+          "rotate_every_minutes": "Roter imellem trafikmeldinger hvert minut",
+          "listen_to_timer_trigger": "eller brug en Timer hjælper som rotationsudløserr",
+          "restart_timer": "Genstart Timer hjælper automatisk"
+        }
+      },
+      "user_match": {
+        "title": "Trafikmeldinger",
+        "description": "Match teksten i trafikmeldingerne",
+        "data": {
+          "match_case": "Match store og små bogstaver",
+          "match_word": "Match hele ordet/udtryk",
+          "match_list": "Match liste"
+        }
+      },
+      "user_extra": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "only_show_last_update": "Vis kun den seneste opdatering",
+          "incl_latest_in_previous_traffic_reports": "Inkluder seneste opdatering i tidligere trafikmeldinger",
+          "overview_important_notices": "Vigtige meddelelser i oversigt markdown",
+          "overview_latest_traffic_report": "Seneste trafikmelding i oversigt markdown",
+          "overview_previous_traffic_reports": "Tidligere trafikmeldinger i oversigt markdown"
+        }
+      }
+    }
+  },
+  "options": {
+    "abort": {
+      "already_configured": "Enheden er allerede konfigureret"
+    },
+    "error": {
+      "unknown": "Uventet fejl"
+    },
+    "step": {
+      "init": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "region": "Region",
+          "transport_type": "Transporttype",
+          "max_time_back": "Hent kun trafikmeldinger som er max timer gamle",
+          "max_time_back_concluded": "Vis kun afsluttet trafikmeldinger som er max timer gamle",
+          "max_row_fetch": "Hent max antal trafikmeldinger",
+          "only_show_last_update": "Vis kun den seneste opdatering",
+          "rotate_every_minutes": "Roter imellem trafikmeldinger hvert minut",
+          "listen_to_timer_trigger": "Eller brug en Timer hjælper som rotationsudløser",
+          "restart_timer": "Genstart Timer hjælper automatisk"
+        }
+      },
+      "init_match": {
+        "title": "Trafikmeldinger",
+        "description": "Match teksten i trafikmeldingerne",
+        "data": {
+          "match_case": "Match store og små bogstaver",
+          "match_word": "Match hele ordet/udtryk",
+          "match_list": "Match liste"
+        }
+      },
+      "init_extra": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "only_show_last_update": "Vis kun den seneste opdatering",
+          "incl_latest_in_previous_traffic_reports": "Inkluder seneste opdatering i tidligere trafikmeldinger",
+          "overview_important_notices": "Vigtige meddelelser i oversigt markdown",
+          "overview_latest_traffic_report": "Seneste trafikmelding i oversigt markdown",
+          "overview_previous_traffic_reports": "Tidligere trafikmeldinger i oversigt markdown"
+        }
+      }
+    }
+  },
+  "issues": {
+    "missing_timer_entity": {
+      "description": "Det ser ud til, at timerhjælperen `{timer_entity}` enten er blevet slettet eller fjernet til brug i meddelelses loggen `{entity}`. \n\n Vær venlig at løse dette problem.",
+      "title": "Meddelelses log: Timer hjælper slettet eller omdøbt"
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "all": "Hele landet",
+        "cph": "København og Sjælland",
+        "mid_north": "Midt-, Nord- og Østjylland",
+        "south": "Fyn, Trekanten og Sydjylland"
+      }
+    },
+    "transport_type": {
+      "options": {
+        "all": "Alle transporttyper",
+        "public": "kollektiv transport",
+        "private": "Biltrafik"
+      }
+    }
+  },
+  "services": {
+    "mark_all_as_read": {
+      "description": "Marker alt som læst.",
+      "name": "Marker alt som læst"
+    },
+    "mark_all_traffic_reports_as_read": {
+      "description": "Marker alle trafikmeldinger som læst.",
+      "name": "Marker alle trafikmeldinger som læst"
+    },
+    "mark_all_important_notices_as_read": {
+      "description": "Marker alle vigtige meddelelser som læst.",
+      "name": "Marker alle vigtige meddelelser som læst"
+    },
+    "mark_latest_traffic_report_as_read": {
+      "description": "Marker seneste trafikmelding som læst.",
+      "name": "Marker seneste trafikmelding som læst"
+    },
+    "mark_latest_important_notice_as_read": {
+      "description": "Marker seneste vigtig meddelelse som læst.",
+      "name": "Marker seneste vigtig meddelelse som læst"
+    },
+    "mark_current_traffic_report_as_read": {
+      "description": "Marker aktuelle trafikmeldinger som læst.",
+      "name": "Marker aktuelle trafikmeldinger som læst"
+    },
+    "mark_current_important_notice_as_read": {
+      "description": "Marker aktuelle vigtig meddelelser som læst.",
+      "name": "Marker aktuelle vigtig meddelelser som læst"
+    },
+    "unmark_all_as_read": {
+      "description": "Fjern markering for alt som læst.",
+      "name": "Fjern Markering for alt som læst"
+    },
+    "unmark_all_traffic_reports_as_read": {
+      "description": "Fjern markering for alle trafikmeldinger som læst.",
+      "name": "Fjern markering for alle trafikmeldinger som læst"
+    },
+    "unmark_all_important_notices_as_read": {
+      "description": "Fjern markering for alle vigtige meddelelser som læst.",
+      "name": "Fjern markering for alle vigtige meddelelser som læst"
+    },
+    "unmark_latest_traffic_report_as_read": {
+      "description": "Fjern markering for seneste trafikmelding som læst.",
+      "name": "Fjern markering for seneste trafikmelding som læst"
+    },
+    "unmark_latest_important_notice_as_read": {
+      "description": "Fjern markering for seneste vigtig meddelelse som læst.",
+      "name": "Fjern markering for seneste vigtig meddelelse som læst"
+    },
+    "unmark_current_traffic_report_as_read": {
+      "description": "Fjern markering for aktuelle trafikmeldinger som læst.",
+      "name": "Fjern markering for aktuelle trafikmeldinger som læst"
+    },
+    "unmark_current_important_notice_as_read": {
+      "description": "Fjern markering for aktuelle vigtig meddelelser som læst.",
+      "name": "Fjern markering for aktuelle vigtig meddelelser som læst"
+    },
+    "rotate_to_next_traffic_report": {
+      "description": "Rotere til næste trafikmelding.",
+      "name": "Rotere til næste trafikmelding"
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "new_traffic_report": "Ny trafikmelding",
+      "new_important_notice": "Ny vigtig besked"
+    }
+  }
+}

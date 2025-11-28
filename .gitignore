@@ -1,0 +1,72 @@
+# --- Git / editor generelt ---
+.git/
+*.swp
+*.swo
+*.bak
+*.tmp
+*.orig
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.code-workspace
+
+# --- Home Assistant databaser (store, ofte omskrevne filer) ---
+home-assistant_v2.db
+home-assistant_v2.db-*
+zigbee.db
+zigbee.db-*
+*.db-shm
+*.db-wal
+
+# Hvis du senere får andre db'er som ikke skal med:
+# *.db
+
+# --- Home Assistant logfiler ---
+home-assistant.log
+home-assistant.log.*
+home-assistant.log.1
+home-assistant.log.old
+home-assistant.log.fault
+*.log
+
+# --- HA interne mapper (brugere, auth, cache, cloud osv.) ---
+.storage/
+.cloud/
+.backup/
+backup/
+backups/
+tmp/
+deps/
+
+# --- TTS-cache (som regel ikke nødvendig i Git) ---
+tts/
+
+# --- Hemmeligheder og certifikater ---
+secrets.yaml
+secrets_*.yaml
+*.pem
+*.key
+*.crt
+
+# --- Watchman rapporter (auto-genererede rapport-filer) ---
+watchman_report.txt
+
+# --- Esphome build (hvis/ når du bruger ESPHome) ---
+esphome/.esphome/
+esphome/*/.pioenvs/
+esphome/*/.pio/
+esphome/*/.esphome/
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+
+# --- Diverse test-/udviklingsmapper (valgfrit) ---
+tests/
+.test/
+
+# --- HA interne filer vi ikke vil tracke ---
+.HA_VERSION
+.ha_run.lock
+ip_bans.yaml

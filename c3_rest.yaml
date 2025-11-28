@@ -1,0 +1,125 @@
+# --- C3: Access token ---
+- resource: !secret c3_token_url
+  method: POST
+  headers:
+    Content-Type: application/x-www-form-urlencoded
+    Accept: application/json
+  payload: !secret c3_token_payload
+  timeout: 20
+  scan_interval: 86400 # vi opdaterer manuelt via automation
+  sensor:
+    - name: "C3 access token"
+      unique_id: c3_access_token
+      value_template: >-
+        {% if value_json is defined
+              and value_json.access_token is defined
+              and value_json.access_token | length > 0 %}
+          OK
+        {% else %}
+          FAIL
+        {% endif %}
+      json_attributes:
+        - access_token
+        - expires_in
+        - token_type
+        - error
+        - error_description
+
+# --- C3: Hent alarmer ---
+- resource: "https://c3ng-fire-station-screen-latest-alarms-widget-api.rm-group.dk/LatestAlarms/63505d920f799a0cd5d39c80?c3ClassicOrganization=OrgMJBR&numberOfLatestAlarms=10"
+  method: GET
+  headers:
+    Authorization: "Bearer {{ state_attr('sensor.c3_access_token', 'access_token') }}"
+    User-Agent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+    Accept-Language: "da,en-US;q=0.7,en;q=0.3"
+    Accept: "application/json, text/plain, */*"
+    Referer: "https://c3ng.rm-group.dk/"
+    Origin: "https://c3ng.rm-group.dk"
+  timeout: 20
+  scan_interval: 86400 # <-- 24 timer (vi opdaterer manuelt via automation)
+  sensor:
+    - name: "C3 alarmer (antal)"
+      unique_id: c3_alarms_count
+      value_template: >-
+        {% set data = value_json if value_json is defined else [] %}
+        {{ data | length if data is iterable else 0 }}
+
+    - name: "C3 alarm 0"
+      unique_id: c3_alarm_0
+      value_template: >-
+        {% set data = value_json if value_json is defined else [] %}
+        {% set a = data[0] if data and data[0] is defined else dict() %}
+        {{ a.id if a and a.id is defined else 0 }}
+      json_attributes_path: "$[0]"
+      json_attributes:
+        - id
+        - alarmTime
+        - address
+        - alarmReceivedFromText
+        - firstReportsWordingText
+        - stationNames
+        - vehicleNames
+
+    - name: "C3 alarm 1"
+      unique_id: c3_alarm_1
+      value_template: >-
+        {% set data = value_json if value_json is defined else [] %}
+        {% set a = data[1] if data and data[1] is defined else dict() %}
+        {{ a.id if a and a.id is defined else 0 }}
+      json_attributes_path: "$[1]"
+      json_attributes:
+        - id
+        - alarmTime
+        - address
+        - alarmReceivedFromText
+        - firstReportsWordingText
+        - stationNames
+        - vehicleNames
+
+    - name: "C3 alarm 2"
+      unique_id: c3_alarm_2
+      value_template: >-
+        {% set data = value_json if value_json is defined else [] %}
+        {% set a = data[2] if data and data[2] is defined else dict() %}
+        {{ a.id if a and a.id is defined else 0 }}
+      json_attributes_path: "$[2]"
+      json_attributes:
+        - id
+        - alarmTime
+        - address
+        - alarmReceivedFromText
+        - firstReportsWordingText
+        - stationNames
+        - vehicleNames
+
+    - name: "C3 alarm 3"
+      unique_id: c3_alarm_3
+      value_template: >-
+        {% set data = value_json if value_json is defined else [] %}
+        {% set a = data[3] if data and data[3] is defined else dict() %}
+        {{ a.id if a and a.id is defined else 0 }}
+      json_attributes_path: "$[3]"
+      json_attributes:
+        - id
+        - alarmTime
+        - address
+        - alarmReceivedFromText
+        - firstReportsWordingText
+        - stationNames
+        - vehicleNames
+
+    - name: "C3 alarm 4"
+      unique_id: c3_alarm_4
+      value_template: >-
+        {% set data = value_json if value_json is defined else [] %}
+        {% set a = data[4] if data and data[4] is defined else dict() %}
+        {{ a.id if a and a.id is defined else 0 }}
+      json_attributes_path: "$[4]"
+      json_attributes:
+        - id
+        - alarmTime
+        - address
+        - alarmReceivedFromText
+        - firstReportsWordingText
+        - stationNames
+        - vehicleNames

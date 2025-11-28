@@ -1,0 +1,94 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Text to speech
+tts:
+  - platform: google_translate
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+template: !include templates.yaml
+
+# C3 API-INTEGRATION
+rest: !include c3_rest.yaml
+
+# Extend data logging
+recorder:
+  purge_keep_days: 20
+
+# Cloudflare (deaktiveret)
+#http:
+#  use_x_forwarded_for: true
+#  trusted_proxies:
+#    - 172.30.33.0/24
+#  ip_ban_enabled: true
+#  login_attempts_threshold: 5
+
+# IHC
+ihc:
+  - url: "http://192.168.1.99"
+    username: !secret ihc_user
+    password: !secret ihc_pass
+    auto_setup: false
+    info: true
+    switch:
+      - id: 241682
+        name: Spisebord
+      - id: 1132818
+        name: Entre
+      - id: 1186578
+        name: Hoveddør og carport
+      - id: 851218
+        name: Indkørsel
+      - id: 1239826
+        name: Køkken
+      - id: 282898
+        name: Stikkontakter
+      - id: 1318418
+        name: Bryggers
+      - id: 1290258
+        name: Viktualierum
+      - id: 1460753
+        name: Vagt
+      - id: 1461009
+        name: Sun
+
+# Yahoo Finance
+yahoofinance:
+  symbols:
+    - PFIGLA.CO
+    - PFIBAA.CO
+  scan_interval:
+    hours: 1
+  show_trending_icon: true
+
+# Brændstofpriser
+fuelprices_dk:
+  companies:
+    - ok
+  fueltypes:
+    - oktan 95
+
+homeassistant:
+  customize:
+    sensor.outdoor_absolute_humidity:
+      unit_of_measurement: "g/m³"
+
+# On/off switch for C3 forespørgsler
+input_boolean:
+  c3_enabled:
+    name: "C3 forespørgsler"
+    icon: mdi:toggle-switch
+
+  # Udkald - Vagt og Silkeborg kaldt
+  udkald_silkeborg:
+    name: Udkald Silkeborg
+    icon: mdi:alarm-light
+
+    # C3 seneste poll
+input_datetime:
+  c3_last_poll:
+    name: "C3 seneste poll"
+    has_date: true
+    has_time: true

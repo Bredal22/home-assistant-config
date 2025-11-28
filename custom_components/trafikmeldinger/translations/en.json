@@ -1,0 +1,188 @@
+{
+  "title": "Trafikmeldinger",
+  "entity_component": {
+    "_": {
+      "name": "Trafikmeldinger"
+    }
+  },
+  "device": {
+    "trafikmeldinger": {
+      "name": "Trafikmeldinger"
+    }
+  },
+  "config": {
+    "abort": {
+      "already_configured": "Device is already configured"
+    },
+    "error": {
+      "unknown": "Unexpected error"
+    },
+    "step": {
+      "user": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "region": "Region",
+          "transport_type": "Transporttype",
+          "max_time_back": "Only fetch trafic reports that are maximum hours old",
+          "max_time_back_concluded": "Only show concluded trafic reports that are maximum hours old",
+          "max_row_fetch": "Fetch maximum trafic reports",
+          "rotate_every_minutes": "Rotate between traffic reports every minutes",
+          "listen_to_timer_trigger": "Or use a Timer helper as scroll trigger",
+          "restart_timer": "Restart Timer helper automatic"
+        }
+      },
+      "user_match": {
+        "title": "Trafikmeldinger",
+        "description": "Match the text in the traffic reports",
+        "data": {
+          "match_case": "Match case",
+          "match_word": "Match the whole word",
+          "match_list": "Match list"
+        }
+      },
+      "user_extra": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "only_show_last_update": "Only show the last update.",
+          "incl_latest_in_previous_traffic_reports": "Include the latest update in previous traffic reports",
+          "overview_important_notices": "Important notices in overview markdown",
+          "overview_latest_traffic_report": "Latest traffic report in overview markdown",
+          "overview_previous_traffic_reports": "Previous traffic reports in overview markdown"
+        }
+      }
+    }
+  },
+  "options": {
+    "abort": {
+      "already_configured": "Device is already configured"
+    },
+    "error": {
+      "unknown": "Unexpected error"
+    },
+    "step": {
+      "init": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "region": "Region",
+          "transport_type": "Transporttype",
+          "max_time_back": "Only fetch trafic reports that are maximum hours old",
+          "max_time_back_concluded": "Only show concluded trafic reports that are maximum hours old",
+          "max_row_fetch": "Fetch maximum trafic reports",
+          "rotate_every_minutes": "Rotate between traffic reports every minutes",
+          "listen_to_timer_trigger": "Or use a Timer helper as scroll trigger",
+          "restart_timer": "Restart Timer helper automatic"
+        }
+      },
+      "init_match": {
+        "title": "Trafikmeldinger",
+        "description": "Match the text in the traffic reports",
+        "data": {
+          "match_case": "Match case",
+          "match_word": "Match the whole word",
+          "match_list": "Match list"
+        }
+      },
+      "init_extra": {
+        "title": "Trafikmeldinger",
+        "data": {
+          "only_show_last_update": "Only show the last update.",
+          "incl_latest_in_previous_traffic_reports": "Include the latest update in previous traffic reports",
+          "sum_incl_important_notices": "Important notices in summary",
+          "sum_incl_latest_traffic_report": "Latest traffic report in summary",
+          "sum_incl_previous_traffic_reports": "Previous traffic reports in summary"
+        }
+      }
+    }
+  },
+  "issues": {
+    "missing_timer_entity": {
+      "description": "It looks like either the Timer helper `{timer_entity}` has been deleted or removed for use in Trafikmeldinger `{entity}`. \n\n Please fix this problem.",
+      "title": "Trafikmeldinger: Timer helper deleted or renamed"
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "all": "The entire country",
+        "cph": "København og Sjælland",
+        "mid_north": "Midt-, Nord- og Østjylland",
+        "south": "Fyn, Trekanten og Sydjylland"
+      }
+    },
+    "transport_type": {
+      "options": {
+        "all": "All transporttypes",
+        "public": "Public transport",
+        "private": "Car"
+      }
+    }
+  },
+  "services": {
+    "mark_all_as_read": {
+      "description": "Mark all as read.",
+      "name": "Mark all as read"
+    },
+    "mark_all_traffic_reports_as_read": {
+      "description": "Mark all traffic reports as read.",
+      "name": "Mark all traffic reports as read"
+    },
+    "mark_all_important_notices_as_read": {
+      "description": "Mark all important notices as read.",
+      "name": "Mark all important notices as read"
+    },
+    "mark_latest_traffic_report_as_read": {
+      "description": "Mark latest traffic report as read.",
+      "name": "Mark lattest traffic report as read"
+    },
+    "mark_latest_important_notice_as_read": {
+      "description": "Mark latest important notice as read.",
+      "name": "Mark lattest important notice as read"
+    },
+    "mark_current_traffic_report_as_read": {
+      "description": "Mark current traffic report as read.",
+      "name": "Mark current traffic reports as read"
+    },
+    "mark_current_important_notice_as_read": {
+      "description": "Mark current important notice as read.",
+      "name": "Mark lattest important notice as read"
+    },
+    "unmark_all_as_read": {
+      "description": "Unmark all as read.",
+      "name": "Unmark all as read"
+    },
+    "unmark_all_traffic_reports_as_read": {
+      "description": "Unmark all traffic reports as read.",
+      "name": "Unmark all traffic reports as read"
+    },
+    "unmark_all_important_notices_as_read": {
+      "description": "Unmark all important notices as read.",
+      "name": "Unmark all important notices as read"
+    },
+    "unmark_latest_traffic_report_as_read": {
+      "description": "Unmark latest traffic report as read.",
+      "name": "Unmark lattest traffic report as read"
+    },
+    "unmark_latest_important_notice_as_read": {
+      "description": "Unmark latest important notice as read.",
+      "name": "Unmark lattest important notice as read"
+    },
+    "unmark_current_traffic_report_as_read": {
+      "description": "Unmark current traffic report as read.",
+      "name": "Unmark current traffic reports as read"
+    },
+    "unmark_current_important_notice_as_read": {
+      "description": "Unmark current important notice as read.",
+      "name": "Unmark lattest important notice as read"
+    },
+    "rotate_to_next_traffic_report": {
+      "description": "Rotate to next traffic report.",
+      "name": "Rotate to next traffic report"
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "new_traffic_report": "New traffic report",
+      "new_important_notice": "New important notice"
+    }
+  }
+}
