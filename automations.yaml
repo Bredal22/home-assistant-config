@@ -185,11 +185,6 @@
     - service: homeassistant.update_entity
       target:
         entity_id: sensor.c3_alarm_0
-    - service: input_datetime.set_datetime
-      target:
-        entity_id: input_datetime.c3_last_poll
-      data:
-        datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
 
 - id: "1763468099555"
   alias: Silkeborg – C3 alarm 0 notifikation

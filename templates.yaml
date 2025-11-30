@@ -293,12 +293,12 @@
     - name: "C3 sidst opdateret"
       unique_id: c3_last_update
       icon: mdi:update
+      availability: "{{ states.sensor.c3_alarm_0 is not none }}"
       state: >-
-        {% set _ = states('sensor.time') %}
-        {% set s = states('input_datetime.c3_last_poll') %}
-        {% if s not in ['unknown', 'unavailable', ''] %}
-          {% set last = as_timestamp(s) %}
-          {% set diff = (now().timestamp() - last) | int %}
+        {% set alarm = states.sensor.c3_alarm_0 %}
+        {% set last = alarm.last_updated if alarm is not none else none %}
+        {% if last %}
+          {% set diff = (now() - last).total_seconds() | int %}
           {% if diff < 60 %}
             mindre end 1 minut siden
           {% elif diff < 3600 %}
@@ -312,9 +312,10 @@
       attributes:
         friendly_name: "C3 sidst opdateret"
         last_update_local: >-
-          {% set s = states('input_datetime.c3_last_poll') %}
-          {% if s not in ['unknown', 'unavailable', ''] %}
-            {{ s }}
+          {% set alarm = states.sensor.c3_alarm_0 %}
+          {% set last = alarm.last_updated if alarm is not none else none %}
+          {% if last %}
+            {{ as_timestamp(last) | timestamp_custom("%Y-%m-%d %H:%M:%S") }}
           {% else %}
             ukendt
           {% endif %}

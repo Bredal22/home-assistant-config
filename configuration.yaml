@@ -85,10 +85,3 @@ input_boolean:
   udkald_silkeborg:
     name: Udkald Silkeborg
     icon: mdi:alarm-light
-
-    # C3 seneste poll
-input_datetime:
-  c3_last_poll:
-    name: "C3 seneste poll"
-    has_date: true
-    has_time: true
