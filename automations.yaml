@@ -330,3 +330,32 @@
           channel: c3_standard
       action: notify.mobile_app_sm_s908b
   mode: parallel
+
+- id: "c3_watchdog_fejl"
+  alias: C3 – watchdog ved fejl
+  description: Giv besked hvis C3 har været nede i mindst 10 minutter
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.c3_ok
+      to: "off"
+      for:
+        minutes: 10
+  condition:
+    - condition: state
+      entity_id: input_boolean.c3_enabled
+      state: "on"
+  action:
+    - service: notify.mobile_app_sm_s908b
+      data:
+        title: "C3-fejl (watchdog)"
+        message: >-
+          C3 har været nede i mindst 10 minutter.
+          Status: {{ states('sensor.c3_status') }}.
+          Sidst opdateret: {{ state_attr('sensor.c3_sidst_opdateret', 'last_update_local') }}
+    - service: persistent_notification.create
+      data:
+        title: "C3-fejl"
+        message: >-
+          C3 OK: {{ states('binary_sensor.c3_ok') }}
+          Sidst opdateret: {{ state_attr('sensor.c3_sidst_opdateret', 'last_update_local') }}
+  mode: single
