@@ -75,8 +75,8 @@ homeassistant:
     sensor.outdoor_absolute_humidity:
       unit_of_measurement: "g/m³"
 
-# On/off switch for C3 forespørgsler
 input_boolean:
+  # On/off switch for C3 forespørgsler
   c3_enabled:
     name: "C3 forespørgsler"
     icon: mdi:toggle-switch
@@ -85,3 +85,8 @@ input_boolean:
   udkald_silkeborg:
     name: Udkald Silkeborg
     icon: mdi:alarm-light
+
+  # Vagt - Automatisk fra GP
+  vagt:
+    name: Allan vagt
+    icon: mdi:shield-account
