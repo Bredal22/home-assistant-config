@@ -320,6 +320,19 @@
             ukendt
           {% endif %}
 
+    - name: "C3 alarm 0 adresse (waze)"
+      unique_id: c3_alarm_0_address_waze
+      icon: mdi:map-marker
+      state: >-
+        {% set a = states('sensor.c3_alarm_0_adresse') | trim %}
+        {% if a in ['—','unknown','unavailable',''] %}
+          unknown
+        {% elif 'denmark' in a | lower or 'danmark' in a | lower %}
+          {{ a }}
+        {% else %}
+          {{ a ~ ', Denmark' }}
+        {% endif %}
+
 - binary_sensor:
     - name: "C3 OK"
       unique_id: c3_ok
