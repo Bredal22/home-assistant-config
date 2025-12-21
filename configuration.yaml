@@ -18,12 +18,12 @@ recorder:
   purge_keep_days: 20
 
 # Cloudflare (deaktiveret)
-#http:
-#  use_x_forwarded_for: true
-#  trusted_proxies:
-#    - 172.30.33.0/24
-#  ip_ban_enabled: true
-#  login_attempts_threshold: 5
+# http:
+#   use_x_forwarded_for: true
+#   trusted_proxies:
+#     - 172.30.33.0/24
+#   ip_ban_enabled: true
+#   login_attempts_threshold: 5
 
 # IHC
 ihc:
@@ -34,31 +34,31 @@ ihc:
     info: true
     switch:
       - id: 241682
-        name: Spisebord
+        name: "Spisebord"
       - id: 1132818
-        name: Entre
+        name: "Entre"
       - id: 1186578
-        name: Hoveddør og carport
+        name: "Hoveddør og carport"
       - id: 851218
-        name: Indkørsel
+        name: "Indkørsel"
       - id: 1239826
-        name: Køkken
+        name: "Køkken"
       - id: 282898
-        name: Stikkontakter
+        name: "Stikkontakter"
       - id: 1318418
-        name: Bryggers
+        name: "Bryggers"
       - id: 1290258
-        name: Viktualierum
+        name: "Viktualierum"
       - id: 1460753
-        name: Vagt
+        name: "Vagt"
       - id: 1461009
-        name: Sun
+        name: "Sun"
 
 # Yahoo Finance
 yahoofinance:
   symbols:
-    - PFIGLA.CO
-    - PFIBAA.CO
+    - "PFIGLA.CO"
+    - "PFIBAA.CO"
   scan_interval:
     hours: 1
   show_trending_icon: true
@@ -66,9 +66,9 @@ yahoofinance:
 # Brændstofpriser
 fuelprices_dk:
   companies:
-    - ok
+    - "ok"
   fueltypes:
-    - oktan 95
+    - "oktan 95"
 
 homeassistant:
   customize:
@@ -83,10 +83,10 @@ input_boolean:
 
   # Udkald - Vagt og Silkeborg kaldt
   udkald_silkeborg:
-    name: Udkald Silkeborg
+    name: "Udkald Silkeborg"
     icon: mdi:alarm-light
 
   # Vagt - Automatisk fra GP
   vagt:
-    name: Allan vagt
+    name: "Allan vagt"
     icon: mdi:shield-account
