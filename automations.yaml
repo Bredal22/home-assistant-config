@@ -373,11 +373,6 @@
           entity_id: input_boolean.vagt
           state: "on"
 
-    # Kick Waze tidligt
-    - action: homeassistant.update_entity
-      target:
-        entity_id: sensor.waze_travel_time_for_c3
-
     - delay: "00:00:30"
 
     # Tjek igen efter delay (samme som før)
@@ -393,50 +388,60 @@
     - variables:
         alarm_title: "{{ states('sensor.c3_alarm_0_titel') | default('ukendt alarm') }}"
         dest_addr: "{{ states('sensor.c3_alarm_0_adresse_waze') }}"
-        dest_norm: "{{ states('sensor.c3_alarm_0_adresse_waze') | lower | trim }}"
-        waze_dest: "{{ state_attr('sensor.waze_travel_time_for_c3', 'destination') or '' }}"
-        waze_norm: "{{ (state_attr('sensor.waze_travel_time_for_c3', 'destination') or '') | lower | trim }}"
         alarm_address: >-
           {{ states('sensor.c3_alarm_0_adresse')
              if states('sensor.c3_alarm_0_adresse') not in ['—','unknown','unavailable','']
              else dest_addr }}
 
-    # Opdatér igen inden vi venter på valide data
-    - action: homeassistant.update_entity
-      target:
-        entity_id: sensor.waze_travel_time_for_c3
-
-    - wait_template: >
-        {{ dest_addr not in ['—','unknown','unavailable',''] and
-           (states('sensor.waze_travel_time_for_c3') | float(0)) > 0 and
-           waze_dest not in ['—','unknown','unavailable',''] and
-           (dest_norm in waze_norm or waze_norm in dest_norm) }}
-      timeout: "00:01:00"
-      continue_on_timeout: true
-
-    - variables:
-        drive_minutes: "{{ (states('sensor.waze_travel_time_for_c3') | float(0)) | round(0) | int(0) }}"
-        waze_ok: >
-          {{ dest_addr not in ['—','unknown','unavailable',''] and
-             (states('sensor.waze_travel_time_for_c3') | float(0)) > 0 and
-             waze_dest not in ['—','unknown','unavailable',''] and
-             (dest_norm in waze_norm or waze_norm in dest_norm) }}
-
     - choose:
         - conditions:
             - condition: template
-              value_template: "{{ waze_ok and drive_minutes > 0 }}"
+              value_template: "{{ dest_addr not in ['—','unknown','unavailable',''] }}"
           sequence:
-            - action: notify.mobile_app_sm_s908b
+            - action: waze_travel_time.get_travel_times
               data:
-                message: "TTS"
-                data:
-                  tts_text: >-
-                    Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
-                    Køretiden er {{ drive_minutes }} minutter.
-                  media_stream: alarm_stream
-                  ttl: 0
-                  priority: high
+                region: "eu"
+                units: "metric"
+                vehicle_type: "car"
+                origin: zone.home
+                destination: "{{ dest_addr }}"
+                realtime: true
+              response_variable: waze
+
+            - variables:
+                drive_minutes: >-
+                  {% set d = 0 %}
+                  {% if waze is defined and waze.routes is defined and (waze.routes | count) > 0 %}
+                    {% set d = waze.routes[0].duration | float(0) %}
+                  {% endif %}
+                  {{ d | round(0) | int(0) }}
+
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: "{{ drive_minutes > 0 }}"
+                  sequence:
+                    - action: notify.mobile_app_sm_s908b
+                      data:
+                        message: "TTS"
+                        data:
+                          tts_text: >-
+                            Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                            Køretiden er {{ drive_minutes }} minutter.
+                          media_stream: alarm_stream
+                          ttl: 0
+                          priority: high
+              default:
+                - action: notify.mobile_app_sm_s908b
+                  data:
+                    message: "TTS"
+                    data:
+                      tts_text: >-
+                        Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                        Køretiden er ukendt.
+                      media_stream: alarm_stream
+                      ttl: 0
+                      priority: high
       default:
         - action: notify.mobile_app_sm_s908b
           data:
