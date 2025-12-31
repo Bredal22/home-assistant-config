@@ -124,3 +124,59 @@
         - firstReportsWordingText
         - stationNames
         - vehicleNames
+
+# ---- Find deltids placering på køretøjer -----
+# --- C3: Deltid (form) ---
+- resource: "https://c3ng-forms-widget-api.rm-group.dk/Forms/647e1301614267e9e86daa01"
+  method: GET
+  headers:
+    Authorization: >-
+      Bearer {{ state_attr('sensor.c3_access_token', 'access_token') }}
+    User-Agent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:146.0) Gecko/20100101 Firefox/146.0"
+    Accept-Language: "da,en-US;q=0.7,en;q=0.3"
+    Accept: "application/json, text/plain, */*"
+    Referer: "https://c3ng.rm-group.dk/"
+    Origin: "https://c3ng.rm-group.dk"
+  timeout: 20
+  scan_interval: 86400
+  sensor:
+    - name: "C3 deltid form"
+      unique_id: c3_deltid_form
+      value_template: "OK"
+      json_attributes:
+        - id
+        - name
+        - title
+        - pages
+        - fields
+        - components
+        - sections
+        - schema
+        - elements
+
+    - name: "C3 deltid form keys"
+      unique_id: c3_deltid_form_keys
+      value_template: >-
+        {% if value_json is mapping %}
+          DICT ({{ value_json | count }} keys)
+        {% elif value_json is iterable %}
+          LIST ({{ value_json | length }} items)
+        {% else %}
+          NO_JSON
+        {% endif %}
+      json_attributes:
+        - formJsonData
+        - id
+        - name
+
+    - name: "C3 deltid form preview"
+      unique_id: c3_deltid_form_preview
+      value_template: >-
+        {{ (value | default('') | replace('\n',' '))[:240] }}
+
+    - name: "C3 deltid formJsonData"
+      unique_id: c3_deltid_form_json
+      value_template: "OK"
+      json_attributes_path: "$.formJsonData"
+      json_attributes:
+        - components
