@@ -119,14 +119,26 @@
   conditions: []
 
   actions:
+    # 1) Hent token først
+    - action: homeassistant.update_entity
+      target:
+        entity_id: sensor.c3_access_token
+
+    # 2) Vent til token-attributten faktisk er der (undgår tomt/401)
+    - wait_template: >-
+        {{ (state_attr('sensor.c3_access_token','access_token') | default('') | length) > 0 }}
+      timeout: "00:00:10"
+      continue_on_timeout: true
+
+    # 3) Opdatér alarmer + deltid-sensor
     - action: homeassistant.update_entity
       target:
         entity_id:
-          - sensor.c3_access_token
           - sensor.c3_alarmer_antal
           - sensor.c3_alarm_0
           - sensor.c3_alarm_1
           - sensor.c3_alarm_2
+          - sensor.c3_deltid_seneste_aendring
 
 - id: 3ee036fe1df04b2e8add15f5ca73a328
   alias: "C3: Poll token (4 min)"
@@ -142,6 +154,7 @@
       state: "on"
     - condition: template
       value_template: "{{ states('sensor.c3_access_token') not in ['unknown','unavailable'] }}"
+
   actions:
     - action: homeassistant.update_entity
       target:
@@ -182,9 +195,23 @@
       state: "OK"
 
   actions:
+    # (Anbefalet) refresh token før data-kald – så får du ikke "Empty reply"/401 når token løber ud
     - action: homeassistant.update_entity
       target:
-        entity_id: sensor.c3_alarm_0
+        entity_id: sensor.c3_access_token
+
+    - wait_template: >-
+        {{ (state_attr('sensor.c3_access_token','access_token') | default('') | length) > 0 }}
+      timeout: "00:00:10"
+      continue_on_timeout: true
+
+    # Opdatér alarm_0 + deltid (og evt. antal hvis du vil)
+    - action: homeassistant.update_entity
+      target:
+        entity_id:
+          - sensor.c3_alarm_0
+          - sensor.c3_deltid_seneste_aendring
+          # - sensor.c3_alarmer_antal
 
 - id: "1763468099555"
   alias: Silkeborg – C3 alarm 0 notifikation

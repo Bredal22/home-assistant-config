@@ -126,57 +126,42 @@
         - vehicleNames
 
 # ---- Find deltids placering på køretøjer -----
-# --- C3: Deltid (form) ---
-- resource: "https://c3ng-forms-widget-api.rm-group.dk/Forms/647e1301614267e9e86daa01"
+# --- C3: Deltid (filled forms / seneste) ---
+- resource: "https://c3ng-forms-widget-api.rm-group.dk/FilledForms?metaDataId=64cb70a2ed74aaa6ddb2e7ee&formId=647e1301614267e9e86daa01&page=1&limit=1&sortBy=LastUpdatedOn&sortReverse=True"
   method: GET
   headers:
     Authorization: >-
       Bearer {{ state_attr('sensor.c3_access_token', 'access_token') }}
+    Accept: "application/json"
     User-Agent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:146.0) Gecko/20100101 Firefox/146.0"
-    Accept-Language: "da,en-US;q=0.7,en;q=0.3"
-    Accept: "application/json, text/plain, */*"
     Referer: "https://c3ng.rm-group.dk/"
     Origin: "https://c3ng.rm-group.dk"
   timeout: 20
-  scan_interval: 86400
+  scan_interval: 86400 # opdateres manuelt via automation (som de andre)
   sensor:
-    - name: "C3 deltid form"
-      unique_id: c3_deltid_form
-      value_template: "OK"
-      json_attributes:
-        - id
-        - name
-        - title
-        - pages
-        - fields
-        - components
-        - sections
-        - schema
-        - elements
-
-    - name: "C3 deltid form keys"
-      unique_id: c3_deltid_form_keys
+    - name: "C3 deltid seneste ændring"
+      unique_id: c3_deltid_lastupdated
       value_template: >-
-        {% if value_json is mapping %}
-          DICT ({{ value_json | count }} keys)
-        {% elif value_json is iterable %}
-          LIST ({{ value_json | length }} items)
-        {% else %}
-          NO_JSON
-        {% endif %}
+        {{ value_json.data[0].lastUpdatedOn if value_json is mapping and value_json.data is defined and (value_json.data|length)>0 else 'unknown' }}
+      json_attributes_path: "$.data[0].formJsonData.data"
       json_attributes:
-        - formJsonData
-        - id
-        - name
+        - holdleder
+        - i11
 
-    - name: "C3 deltid form preview"
-      unique_id: c3_deltid_form_preview
-      value_template: >-
-        {{ (value | default('') | replace('\n',' '))[:240] }}
+        # Primær sprøjte
+        - chauffor
+        - Rogdykker
+        - Rogdykker1
 
-    - name: "C3 deltid formJsonData"
-      unique_id: c3_deltid_form_json
-      value_template: "OK"
-      json_attributes_path: "$.formJsonData"
-      json_attributes:
-        - components
+        # Primært følgekøretøj
+        - chauffor1
+        - Rogdykker2
+
+        # Sekundært følgekøretøj
+        - chauffor5
+        - Rogdykker3
+
+        # Assistance
+        - chauffor7
+        - Rogdykker8
+        - Rogdykker9
