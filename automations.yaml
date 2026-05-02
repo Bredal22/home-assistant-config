@@ -33,7 +33,7 @@
   conditions: []
 
   actions:
-    - action: notify.mobile_app_sm_s908b
+    - action: notify.mobile_app_sm_s938b
       data:
         message: "Kontroller køleskab TT"
 
@@ -50,7 +50,7 @@
   conditions: []
 
   actions:
-    - action: notify.mobile_app_sm_s908b
+    - action: notify.mobile_app_sm_s938b
       data:
         message: "Kontroller stue AirThings"
 
@@ -74,7 +74,7 @@
       data:
         volume_level: 0.3
 
-    - action: notify.mobile_app_sm_s908b
+    - action: notify.mobile_app_sm_s938b
       data:
         message: "Temperatur i køleskab udenfor interval"
 
@@ -89,22 +89,6 @@
                 media-source://tts/google_translate?message=Temperature+in+refrigerator+too+high
               media_content_type: provider
           - delay: "00:00:20"
-
-- id: "1672391152775"
-  alias: Low battery level detection & notification for all battery sensors
-  description: Notificér når batteri er lavt på batteri-sensorer
-  mode: single
-  use_blueprint:
-    path: sbyx/low-battery-level-detection-notification-for-all-battery-sensors.yaml
-    input:
-      day: 1
-      time: "19:00:00"
-      threshold: 20
-      actions:
-        - device_id: 089493a4fc9ce7ce7bbdade23e7be4bf
-          domain: mobile_app
-          type: notify
-          message: "Lavt batteri på {{ sensors }}"
 
 - id: 5d8cdd0de7964cd996cc99e48d7bf80c
   alias: "C3: Opdater straks ved aktivering"
@@ -230,7 +214,7 @@
       timeout: "00:06:00"
       continue_on_timeout: false
 
-    - action: notify.mobile_app_sm_s908b
+    - action: notify.mobile_app_sm_s938b
       data:
         title: >-
           🚒 {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
@@ -268,7 +252,7 @@
            trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}
 
   actions:
-    - action: notify.mobile_app_sm_s908b
+    - action: notify.mobile_app_sm_s938b
       data:
         title: >-
           {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
@@ -356,7 +340,7 @@
   conditions: []
 
   actions:
-    - action: notify.mobile_app_sm_s908b
+    - action: notify.mobile_app_sm_s938b
       data:
         title: >-
           🚒 {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
@@ -448,7 +432,7 @@
                     - condition: template
                       value_template: "{{ drive_minutes > 0 }}"
                   sequence:
-                    - action: notify.mobile_app_sm_s908b
+                    - action: notify.mobile_app_sm_s938b
                       data:
                         message: "TTS"
                         data:
@@ -459,7 +443,7 @@
                           ttl: 0
                           priority: high
               default:
-                - action: notify.mobile_app_sm_s908b
+                - action: notify.mobile_app_sm_s938b
                   data:
                     message: "TTS"
                     data:
@@ -470,7 +454,7 @@
                       ttl: 0
                       priority: high
       default:
-        - action: notify.mobile_app_sm_s908b
+        - action: notify.mobile_app_sm_s938b
           data:
             message: "TTS"
             data:
@@ -499,7 +483,7 @@
       state: "on"
 
   actions:
-    - action: notify.mobile_app_sm_s908b
+    - action: notify.mobile_app_sm_s938b
       data:
         title: "C3-fejl (watchdog)"
         message: >-

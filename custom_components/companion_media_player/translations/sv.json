@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Companion Media Player",
+        "description": "Denna integration stöder endast Android-enheter. Sensorn Media Session måste vara aktiverad. Volymstyrning är endast tillgänglig om sensorn volume_level_music är aktiverad. Åtgärder från Home Assistant skickas nästan i realtid, medan uppdateringar från enheten beror på hur Companion-appen rapporterar sensoruppdateringar. Se Companion-appens sensordokumentation för detaljer."
+      }
+    },
+    "abort": {
+      "already_configured": "Companion Media Player är redan konfigurerad."
+    }
+  },
+  "entity": {
+    "media_player": {
+      "player": {
+        "name": "Media Player"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Companion Media Player-alternativ",
+        "description": "Konfigurera standardbeteendet för alla Media Players.",
+        "data": {
+          "session_timeout": "Sessions-timeout (minuter)"
+        }
+      }
+    }
+  }
+}
