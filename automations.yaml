@@ -1,361 +1,510 @@
 - id: "1659297189262"
   alias: Sun i IHC - Set at sunrise
-  description: ""
-  trigger:
-    - platform: sun
+  mode: single
+  triggers:
+    - trigger: sun
       event: sunrise
-      offset: 0
-  condition: []
-  action:
-    - service: switch.turn_on
-      data: {}
+  actions:
+    - action: switch.turn_on
       target:
         entity_id: switch.sun
-  mode: single
+
 - id: "1659355250851"
   alias: Sun in IHC - Reset at sunset
-  description: ""
-  trigger:
-    - platform: sun
+  mode: single
+  triggers:
+    - trigger: sun
       event: sunset
-      offset: 0
-  condition: []
-  action:
-    - service: switch.turn_off
-      data: {}
+  actions:
+    - action: switch.turn_off
       target:
         entity_id: switch.sun
-  mode: single
+
 - id: "1672175070779"
   alias: TT overvågning køleskab
   description: ""
-  trigger:
-    - platform: state
-      entity_id:
-        - sensor.koleskab_temperature
-      for:
-        hours: 1
-        minutes: 0
-        seconds: 0
-  condition: []
-  action:
-    - service: notify.mobile_app_sm_s908b
-      data:
-        message: Kontroller køleskab TT
   mode: single
+
+  triggers:
+    - trigger: state
+      entity_id: sensor.koleskab_temperature
+      for: "01:00:00"
+
+  conditions: []
+
+  actions:
+    - action: notify.mobile_app_sm_s938b
+      data:
+        message: "Kontroller køleskab TT"
+
 - id: "1672175158424"
-  alias: "TT overvågning stue AirThings "
+  alias: "TT overvågning stue AirThings"
   description: ""
-  trigger:
-    - platform: state
-      entity_id:
-        - sensor.stue_temperature
-      for:
-        hours: 1
-        minutes: 0
-        seconds: 0
-  condition: []
-  action:
-    - service: notify.mobile_app_sm_s908b
-      data:
-        message: Kontroller stue AirThings
   mode: single
+
+  triggers:
+    - trigger: state
+      entity_id: sensor.stue_temperature
+      for: "01:00:00"
+
+  conditions: []
+
+  actions:
+    - action: notify.mobile_app_sm_s938b
+      data:
+        message: "Kontroller stue AirThings"
+
 - id: "1672207136531"
   alias: Temperaturovervågning køleskab
   description: ""
-  trigger:
-    - type: temperature
-      platform: device
-      device_id: 0355a8c2d9964d0eb7f8afc022faa423
+  mode: single
+
+  triggers:
+    - trigger: numeric_state
       entity_id: sensor.koleskab_temperature
-      domain: sensor
       above: 7
-      for:
-        hours: 0
-        minutes: 0
-        seconds: 1
-  condition: []
-  action:
-    - service: media_player.volume_set
-      data:
-        volume_level: 0.3
+      for: "00:00:01"
+
+  conditions: []
+
+  actions:
+    - action: media_player.volume_set
       target:
         entity_id: media_player.kitchen
-    - device_id: dc33b51eb7313711b712c98af3a202b0
-      domain: mobile_app
-      type: notify
-      message: Temperatur i køleskab udenfor interval
+      data:
+        volume_level: 0.3
+
+    - action: notify.mobile_app_sm_s938b
+      data:
+        message: "Temperatur i køleskab udenfor interval"
+
     - repeat:
-        count: "4"
+        count: 4
         sequence:
-          - service: media_player.play_media
+          - action: media_player.play_media
             target:
               entity_id: media_player.kitchen
             data:
-              media_content_id: media-source://tts/google_translate?message=Temperature+in+refrigerator+too+high
+              media_content_id: >-
+                media-source://tts/google_translate?message=Temperature+in+refrigerator+too+high
               media_content_type: provider
-            metadata:
-              title: Temperature in refrigerator too high
-              thumbnail: https://brands.home-assistant.io/_/google_translate/logo.png
-              media_class: app
-              children_media_class:
-              navigateIds:
-                - {}
-                - media_content_type: app
-                  media_content_id: media-source://tts
-                - media_content_type: provider
-                  media_content_id: media-source://tts/google_translate?message=Temperature+in+refrigerator+too+high
-          - delay:
-              hours: 0
-              minutes: 0
-              seconds: 20
-              milliseconds: 0
-  mode: single
-- id: "1672391152775"
-  alias: Low battery level detection & notification for all battery sensors
-  description: ""
-  use_blueprint:
-    path: sbyx/low-battery-level-detection-notification-for-all-battery-sensors.yaml
-    input:
-      day: 1
-      time: "19:00:00"
-      actions:
-        - device_id: 089493a4fc9ce7ce7bbdade23e7be4bf
-          domain: mobile_app
-          type: notify
-          message: Lavt batteri på {{sensors}}
-      threshold: 20
+          - delay: "00:00:20"
+
 - id: 5d8cdd0de7964cd996cc99e48d7bf80c
   alias: "C3: Opdater straks ved aktivering"
   mode: single
-  trigger:
-    - platform: state
+
+  triggers:
+    - trigger: state
       entity_id: input_boolean.c3_enabled
+      from: "off"
       to: "on"
-  condition: []
-  action:
-    - service: homeassistant.update_entity
+
+  conditions: []
+
+  actions:
+    # 1) Hent token først
+    - action: homeassistant.update_entity
+      target:
+        entity_id: sensor.c3_access_token
+
+    # 2) Vent til token-attributten faktisk er der (undgår tomt/401)
+    - wait_template: >-
+        {{ (state_attr('sensor.c3_access_token','access_token') | default('') | length) > 0 }}
+      timeout: "00:00:10"
+      continue_on_timeout: true
+
+    # 3) Opdatér alarmer + deltid-sensor
+    - action: homeassistant.update_entity
       target:
         entity_id:
-          - sensor.c3_access_token
           - sensor.c3_alarmer_antal
           - sensor.c3_alarm_0
           - sensor.c3_alarm_1
           - sensor.c3_alarm_2
+          - sensor.c3_deltid_seneste_aendring
+
 - id: 3ee036fe1df04b2e8add15f5ca73a328
   alias: "C3: Poll token (4 min)"
   mode: single
-  trigger:
-    - platform: time_pattern
-      minutes: /4
-  condition:
+
+  triggers:
+    - trigger: time_pattern
+      minutes: "/4"
+
+  conditions:
     - condition: state
       entity_id: input_boolean.c3_enabled
       state: "on"
-  action:
-    - service: homeassistant.update_entity
+    - condition: template
+      value_template: "{{ states('sensor.c3_access_token') not in ['unknown','unavailable'] }}"
+
+  actions:
+    - action: homeassistant.update_entity
       target:
         entity_id: sensor.c3_access_token
+
 - id: c3_update_token_on_start
   alias: C3 - Opdater token ved opstart
-  trigger:
-    - platform: homeassistant
+  mode: single
+
+  triggers:
+    - trigger: homeassistant
       event: start
-  condition:
+
+  conditions:
     - condition: state
       entity_id: input_boolean.c3_enabled
       state: "on"
-  action:
-    - service: homeassistant.update_entity
+
+  actions:
+    - action: homeassistant.update_entity
       target:
         entity_id: sensor.c3_access_token
+
 - id: c3_update_alarms_every_30s
   alias: C3 - Opdater alarmer hvert 30. sekund
-  trigger:
-    - platform: time_pattern
-      seconds: /30
   mode: restart
-  condition:
+
+  triggers:
+    - trigger: time_pattern
+      seconds: "/30"
+
+  conditions:
     - condition: state
       entity_id: input_boolean.c3_enabled
       state: "on"
     - condition: state
       entity_id: sensor.c3_access_token
-      state: OK
-  action:
-    - service: homeassistant.update_entity
+      state: "OK"
+
+  actions:
+    # (Anbefalet) refresh token før data-kald – så får du ikke "Empty reply"/401 når token løber ud
+    - action: homeassistant.update_entity
       target:
-        entity_id: sensor.c3_alarm_0
+        entity_id: sensor.c3_access_token
+
+    - wait_template: >-
+        {{ (state_attr('sensor.c3_access_token','access_token') | default('') | length) > 0 }}
+      timeout: "00:00:10"
+      continue_on_timeout: true
+
+    # Opdatér alarm_0 + deltid (og evt. antal hvis du vil)
+    - action: homeassistant.update_entity
+      target:
+        entity_id:
+          - sensor.c3_alarm_0
+          - sensor.c3_deltid_seneste_aendring
+          # - sensor.c3_alarmer_antal
+
 - id: "1763468099555"
   alias: Silkeborg – C3 alarm 0 notifikation
   description: Send notifikation når Silkeborg rykker ud på C3 alarm 0
-  triggers:
-    - entity_id: sensor.c3_alarm_0_tidspunkt_lokal
-      trigger: state
-  conditions: []
-  actions:
-    - wait_template:
-        "{{ 'Silkeborg' in (states('sensor.c3_alarm_0_stationer') or
-        '') }}
+  mode: parallel
 
-        "
-      timeout: 00:06:00
+  triggers:
+    - trigger: state
+      entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+
+  conditions: []
+
+  actions:
+    - wait_template: >-
+        {{ 'Silkeborg' in (states('sensor.c3_alarm_0_stationer') or '') }}
+      timeout: "00:06:00"
       continue_on_timeout: false
-    - data:
-        title:
-          "\U0001F692 {{ states('sensor.c3_alarm_0_stationer') | default('Station
-          ukendt') }} kører\n"
-        message:
-          "{{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt')
-          }} kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel'))
-          }} kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
+
+    - action: notify.mobile_app_sm_s938b
+      data:
+        title: >-
+          🚒 {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
+        message: >-
+          {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }}
+          kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel')) }}
+          kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
 
           Alarm: {{ states('sensor.c3_alarm_0_titel') }}
-
-          "
         data:
           ttl: 0
           priority: high
           channel: c3_standard
-      action: notify.mobile_app_sm_s908b
-  mode: parallel
+          clickAction: >-
+            {% set dest = states('sensor.c3_alarm_0_adresse')
+              if states('sensor.c3_alarm_0_adresse') not in ['—','unknown','unavailable','']
+              else states('sensor.c3_alarm_0_titel') %}
+            https://www.google.com/maps/dir/?api=1&destination={{ dest | urlencode }}
+
 - id: "1763468769647"
   alias: Alle stationer – C3 alarm 0 notifikation
   description: Send notifikation når C3 alarm 0 skifter til ny melding
-  trigger:
-    - platform: state
-      entity_id: sensor.c3_alarm_0_tidspunkt_lokal
-  condition:
-    - condition: template
-      value_template:
-        "{{ trigger.from_state is not none\n   and trigger.to_state is
-        not none\n   and trigger.from_state.state not in ['unknown', 'unavailable',
-        '—']\n   and trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}\n"
-  action:
-    - service: notify.mobile_app_sm_s908b
-      data:
-        title:
-          "{{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt')
-          }} kører
+  mode: single
 
-          "
-        message:
-          "{{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt')
-          }} kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel'))
-          }} kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
+  triggers:
+    - trigger: state
+      entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+
+  conditions:
+    - condition: template
+      value_template: >-
+        {{ trigger.from_state is not none and
+           trigger.to_state is not none and
+           trigger.from_state.state not in ['unknown', 'unavailable', '—'] and
+           trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}
+
+  actions:
+    - action: notify.mobile_app_sm_s938b
+      data:
+        title: >-
+          {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
+        message: >-
+          {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }}
+          kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel')) }}
+          kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
 
           Alarm: {{ states('sensor.c3_alarm_0_titel') }}
 
-          "
-  mode: single
 - id: "1763468099600"
   alias: Flag – Udkald Silkeborg
   description: Sæt input_boolean.udkald_silkeborg ved udkald til Silkeborg
-  trigger:
-    - platform: state
-      entity_id: sensor.c3_alarm_0_tidspunkt_lokal
-  condition:
-    - condition: template
-      value_template:
-        "{{ trigger.from_state is not none\n   and trigger.to_state is
-        not none\n   and trigger.from_state.state not in ['unknown', 'unavailable',
-        '—']\n   and trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}\n"
-  action:
-    - wait_template:
-        "{{ 'Silkeborg' in (states('sensor.c3_alarm_0_stationer') or
-        '') }}
-
-        "
-      timeout: 00:02:00
-      continue_on_timeout: false
-    - service: input_boolean.turn_on
-      target:
-        entity_id: input_boolean.udkald_silkeborg
-    - delay: 00:00:10
-    - service: input_boolean.turn_off
-      target:
-        entity_id: input_boolean.udkald_silkeborg
   mode: restart
+
+  triggers:
+    - trigger: state
+      entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+
+  conditions:
+    - condition: template
+      value_template: >-
+        {{ trigger.from_state is not none
+           and trigger.to_state is not none
+           and trigger.from_state.state not in ['unknown', 'unavailable', '—']
+           and trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}
+
+  actions:
+    - wait_template: >-
+        {{ 'Silkeborg' in (states('sensor.c3_alarm_0_stationer') or '') }}
+      timeout: "00:02:00"
+      continue_on_timeout: false
+
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.udkald_silkeborg
+
+    - delay: "00:00:10"
+
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.udkald_silkeborg
+
 - id: "1763468099601"
   alias: Silkeborg udkald – Lys ved hoveddør og indkørsel
   description: Tænd lys ved udkald til Silkeborg når det er mørkt og jeg har vagt
-  trigger:
-    - platform: state
+  mode: restart
+
+  triggers:
+    - trigger: state
       entity_id: input_boolean.udkald_silkeborg
       from: "off"
       to: "on"
-  condition:
+
+  conditions:
     - condition: state
       entity_id: sun.sun
-      state: below_horizon
+      state: "below_horizon"
     - condition: state
       entity_id: switch.vagt
       state: "on"
-  action:
-    - service: switch.turn_on
+
+  actions:
+    - action: switch.turn_on
       target:
         entity_id:
           - switch.hoveddoer_og_carport
           - switch.indkoersel
-    - delay: 00:05:00
-    - service: switch.turn_off
+    - delay: "00:05:00"
+    - action: switch.turn_off
       target:
         entity_id:
           - switch.hoveddoer_og_carport
           - switch.indkoersel
-  mode: restart
+
 - id: "1764761193478"
   alias: "C3: Test send notifikation til telefon"
   description: Send notifikation når ny C3 alarm
+  mode: restart
+
   triggers:
-    - entity_id: sensor.c3_alarm_0_tidspunkt_lokal
-      trigger: state
+    - trigger: state
+      entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+
   conditions: []
+
   actions:
-    - data:
-        title:
-          "\U0001F692 {{ states('sensor.c3_alarm_0_stationer') | default('Station
-          ukendt') }} kører\n"
-        message:
-          "{{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt')
-          }} kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel'))
-          }} kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
+    - action: notify.mobile_app_sm_s938b
+      data:
+        title: >-
+          🚒 {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
+        message: >-
+          {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }}
+          kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel')) }}
+          kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
 
           Alarm: {{ states('sensor.c3_alarm_0_titel') }}
-
-          "
         data:
           ttl: 0
           priority: high
           channel: c3_standard
-      action: notify.mobile_app_sm_s908b
-  mode: parallel
+          clickAction: >-
+            {% set dest = states('sensor.c3_alarm_0_adresse')
+              if states('sensor.c3_alarm_0_adresse') not in ['—','unknown','unavailable','']
+              else states('sensor.c3_alarm_0_titel') %}
+            https://www.google.com/maps/dir/?api=1&destination={{ dest | urlencode }}
 
-- id: "c3_watchdog_fejl"
+- id: c3_silkeborg_tts_koretid
+  alias: Silkeborg udkald – TTS med køretid
+  description: TTS 30 sek efter udkald (kræver vagt) med køretid til alarm-adresse
+  mode: restart
+
+  triggers:
+    - trigger: state
+      entity_id: input_boolean.udkald_silkeborg
+      from: "off"
+      to: "on"
+
+  conditions: []
+
+  actions:
+    # Kun når du har vagt (switch.vagt OR input_boolean.vagt)
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: switch.vagt
+          state: "on"
+        - condition: state
+          entity_id: input_boolean.vagt
+          state: "on"
+
+    - delay: "00:00:30"
+
+    # Tjek igen efter delay (samme som før)
+    - condition: or
+      conditions:
+        - condition: state
+          entity_id: switch.vagt
+          state: "on"
+        - condition: state
+          entity_id: input_boolean.vagt
+          state: "on"
+
+    - variables:
+        alarm_title: "{{ states('sensor.c3_alarm_0_titel') | default('ukendt alarm') }}"
+        dest_addr: "{{ states('sensor.c3_alarm_0_adresse_waze') }}"
+        alarm_address: >-
+          {{ states('sensor.c3_alarm_0_adresse')
+             if states('sensor.c3_alarm_0_adresse') not in ['—','unknown','unavailable','']
+             else dest_addr }}
+
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ dest_addr not in ['—','unknown','unavailable',''] }}"
+          sequence:
+            - action: waze_travel_time.get_travel_times
+              data:
+                region: "eu"
+                units: "metric"
+                vehicle_type: "car"
+                origin: zone.home
+                destination: "{{ dest_addr }}"
+                realtime: true
+              response_variable: waze
+
+            - variables:
+                drive_minutes: >-
+                  {% set d = 0 %}
+                  {% if waze is defined and waze.routes is defined and (waze.routes | count) > 0 %}
+                    {% set d = waze.routes[0].duration | float(0) %}
+                  {% endif %}
+                  {{ d | round(0) | int(0) }}
+
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: "{{ drive_minutes > 0 }}"
+                  sequence:
+                    - action: notify.mobile_app_sm_s938b
+                      data:
+                        message: "TTS"
+                        data:
+                          tts_text: >-
+                            Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                            Køretiden er {{ drive_minutes }} minutter.
+                          media_stream: alarm_stream
+                          ttl: 0
+                          priority: high
+              default:
+                - action: notify.mobile_app_sm_s938b
+                  data:
+                    message: "TTS"
+                    data:
+                      tts_text: >-
+                        Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                        Køretiden er ukendt.
+                      media_stream: alarm_stream
+                      ttl: 0
+                      priority: high
+      default:
+        - action: notify.mobile_app_sm_s938b
+          data:
+            message: "TTS"
+            data:
+              tts_text: >-
+                Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                Køretiden er ukendt.
+              media_stream: alarm_stream
+              ttl: 0
+              priority: high
+
+- id: c3_watchdog_fejl
   alias: C3 – watchdog ved fejl
   description: Giv besked hvis C3 har været nede i mindst 10 minutter
-  trigger:
-    - platform: state
+  mode: single
+
+  triggers:
+    - trigger: state
       entity_id: binary_sensor.c3_ok
       to: "off"
       for:
         minutes: 10
-  condition:
+
+  conditions:
     - condition: state
       entity_id: input_boolean.c3_enabled
       state: "on"
-  action:
-    - service: notify.mobile_app_sm_s908b
+
+  actions:
+    - action: notify.mobile_app_sm_s938b
       data:
         title: "C3-fejl (watchdog)"
         message: >-
           C3 har været nede i mindst 10 minutter.
           Status: {{ states('sensor.c3_status') }}.
           Sidst opdateret: {{ state_attr('sensor.c3_sidst_opdateret', 'last_update_local') }}
-    - service: persistent_notification.create
+
+    - action: persistent_notification.create
       data:
         title: "C3-fejl"
         message: >-
           C3 OK: {{ states('binary_sensor.c3_ok') }}
           Sidst opdateret: {{ state_attr('sensor.c3_sidst_opdateret', 'last_update_local') }}
+
+- id: gp_vagt_refresh_15_min
+  alias: GP vagt – opdater kalender hver 2. time
   mode: single
+  triggers:
+    - trigger: time_pattern
+      minutes: "/30"
+  actions:
+    - action: homeassistant.update_entity
+      target:
+        entity_id: calendar.gp_vagt

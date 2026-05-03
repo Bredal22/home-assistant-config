@@ -1,0 +1,126 @@
+{
+	"title": "Pax",
+	"config": {
+		"step": {
+			"add_device": {
+				"title": "Pax: Lägg till enhet",
+				"description": "Ange information om enhet.",
+				"data": {
+					"name": "Namn på enhet",
+                    "model": "Device model",  
+					"mac": "MAC-adress (aa:bb:cc:dd:ee:ff)",
+					"pin": "PIN-kod",
+					"scan_interval": "Sökintervall i sekunder",
+					"scan_interval_fast": "Snabbt skanningsintervall i sekunder"
+				}
+			},
+            "wrong_pin": {
+				"title": "Pax: Wrong PIN",
+                "data": {
+                    "wrong_pin_selector": "Select action."    
+                }
+            }
+		},
+		"error": {
+			"cannot_connect": "Anslutning misslyckades",
+            "cannot_pair": "Failed to pair",
+			"wrong_pin": "Fel PIN-kod"
+		},
+		"abort": {
+            "add_success": "enhet {dev_name} lades till",
+			"already_configured": "Integrationen existerar redan",
+            "device_already_configured": "Enheten {dev_name} är redan konfigurerad"
+		}
+	},
+    "options": {
+        "step": {
+            "init": {
+				"title": "Pax BLE Konfiguration",
+                "data": { 
+                    "action": "Var god välj önskad åtgärd."
+                }
+            },
+            "add_device": {
+				"title": "Pax BLE: Lägg till enhet",
+                "description": "Ange uppgifter om din enhet.",
+                "data": {
+					"name": "Namn på enhet",
+                    "model": "Device model",
+					"mac": "MAC-adress (aa:bb:cc:dd:ee:ff)",
+					"pin": "PIN-kod",
+					"scan_interval": "Sökintervall i sekunder",
+					"scan_interval_fast": "Snabbt skanningsintervall i sekunder"
+                }
+            },
+            "wrong_pin": {
+				"title": "Pax: Wrong PIN",
+                "data": {
+                    "wrong_pin_selector": "Select action."    
+                }
+            },
+            "edit_device": {
+				"title": "Pax BLE: Redigera enhet",
+                "description": "Ange nya enhetsdetaljer för {dev_name}",
+                "data": {
+					"name": "Namn på enhet",
+                    "model": "Device model",
+					"mac": "MAC-adress (aa:bb:cc:dd:ee:ff)",
+					"pin": "PIN-kod",
+					"scan_interval": "Sökintervall i sekunder",
+					"scan_interval_fast": "Snabbt skanningsintervall i sekunder"
+                }
+            },
+            "remove_device": {
+				"title": "Pax BLE: Ta bort enhet",
+                "data": {
+                    "selected_device": "Ange enhet att ta bort."   
+                }
+            },
+            "select_edit_device": {
+				"title": "Pax BLE: Redigera enhet",
+                "data": {
+                    "selected_device": "Ange enhet att redigera."    
+                }
+            }
+        },
+		"error": {
+			"cannot_connect": "Anslutning misslyckades",
+            "cannot_pair": "Failed to pair",
+			"wrong_pin": "Fel PIN-kod"
+		},
+		"abort": {
+            "add_success": "Enhet {dev_name} lades till",
+			"already_configured": "Enhet {dev_name} är redan konfigurerad",
+            "edit_success": "Enhet {dev_name} redigerad",
+            "remove_success": "Enhet {dev_name} borttagen"
+		}
+    },
+    "selector": {
+        "action": {
+            "options": {
+                "add_device": "Lägg till enhet",
+                "edit_device": "Redigera enhet",
+                "remove_device": "Ta bort enhet"
+            }
+        },
+        "wrong_pin_selector": {
+            "options": {
+                "accept": "Accept wrong pin",
+                "decline": "Try new pin",
+                "pair": "Start pairing"
+            }
+        }
+    },
+    "services": {
+        "request_update": {
+            "name": "Request value update",
+            "description": "Triggers an update of data associated with a specific device.",
+            "fields": {
+                "device_id": {
+					"name": "Device ID",
+                    "description": "The device for which to update values."
+                }
+            }
+        }
+    }
+}

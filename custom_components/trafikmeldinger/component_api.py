@@ -28,9 +28,9 @@ from .const import (
     CONF_REGION_ALL,
     CONF_TRANSPORT_TYPE,
     CONF_TRANSPORT_TYPE_ALL,
-    CONF_TRANSPORT_TYPE_PRIVATE,
+    # CONF_TRANSPORT_TYPE_PRIVATE,
     DICT_REGION,
-    DICT_TRANSPORT_TYPE,
+    # DICT_TRANSPORT_TYPE,
     DOMAIN,
     EVENT_NEW_IMPORTANT_NOTICE,
     EVENT_NEW_TRAFFIC_REPORT,
@@ -56,6 +56,7 @@ class TrafficStorage(StorageJson):
 
         self.traffic_reports_last_id: dict[str, str] = {}
         self.important_notice_last_id: str = ""
+        self.important_notice_last_text: str = ""
 
         self.marked_as_read: int = 0
 
@@ -163,7 +164,7 @@ class ComponentApi:
         else:
             tmp_color = "red"
 
-        if report["type"] == CONF_TRANSPORT_TYPE_PRIVATE:
+        if report["incidentType"] != "TRAIN":
             tmp_md = (
                 "###  <font color="
                 + tmp_color
@@ -309,7 +310,8 @@ class ComponentApi:
                         "ny_melding": report["text"],
                         "opdateringer": report["formated_updates_text"],
                         "region": DICT_REGION[report["region"]],
-                        "transporttype": DICT_TRANSPORT_TYPE[report["type"]],
+                        # "transporttype": DICT_TRANSPORT_TYPE[report["type"]],
+                        "hændelsestype": report["incidentType"],
                         "oprettet_tidspunkt": report["createdTime"],
                         "opdateret_tidspunkt": report["updatedTime"],
                     },
@@ -353,11 +355,18 @@ class ComponentApi:
         if len(self.important_notices) == 0:
             return
 
-        if self.storage.important_notice_last_id != (
-            self.important_notices[0]["_id"]
-            + " "
-            + self.important_notices[0]["updatedTime"]
+        if (
+            self.storage.important_notice_last_id
+            != (
+                self.important_notices[0]["_id"]
+                + " "
+                + self.important_notices[0]["updatedTime"]
+            )
+            and self.storage.important_notice_last_text
+            != self.important_notices[0]["text"]
         ):
+            self.storage.important_notice_last_text = self.important_notices[0]["text"]
+
             self.hass.bus.async_fire(
                 DOMAIN + "." + EVENT_NEW_IMPORTANT_NOTICE,
                 {
@@ -549,7 +558,7 @@ class ComponentApi:
 
         for tmp_report in reports:
             tmp_report["region"] = str(tmp_report["region"]).lower().replace("-", "_")
-            tmp_report["type"] = str(tmp_report["type"]).lower().replace("-", "_")
+            # tmp_report["type"] = str(tmp_report["type"]).lower().replace("-", "_")
 
             tmp_report["createdTime"] = (
                 dt_util.as_local(datetime.fromisoformat(tmp_report["createdTime"]))
@@ -605,7 +614,8 @@ class ComponentApi:
                     f"type%5B%5D={reg.upper().replace('_', '-')}&"
                 )
 
-        traffic_report_url: str = f"https://api.dr.dk/trafik/posts?{region_part_url}{transport_type_part_url}lastPostDate={last_entry_date}"
+        # traffic_report_url: str = f"https://api.dr.dk/trafik/posts?{region_part_url}{transport_type_part_url}lastPostDate={last_entry_date}"
+        traffic_report_url: str = f"https://api.dr.dk/trafik/posts?{region_part_url}lastPostDate={last_entry_date}"
 
         try:
             tmp_json: list = await self._async_get_new_traffic_reports(

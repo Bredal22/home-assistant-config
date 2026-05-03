@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Companion Media Player",
+        "description": "Diese Integration unterstützt nur Android-Geräte. Der Media-Session-Sensor muss aktiviert sein. Lautstärkesteuerungen sind nur verfügbar, wenn der Sensor volume_level_music aktiviert ist. Aktionen aus Home Assistant werden nahezu in Echtzeit gesendet, während Updates vom Gerät von der Sensor-Übermittlung der Companion App abhängen. Siehe die Sensor-Doku der Companion App für Details."
+      }
+    },
+    "abort": {
+      "already_configured": "Companion Media Player ist bereits konfiguriert."
+    }
+  },
+  "entity": {
+    "media_player": {
+      "player": {
+        "name": "Media Player"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Companion Media Player Optionen",
+        "description": "Konfiguriere das Standardverhalten für alle Media Player.",
+        "data": {
+          "session_timeout": "Session-Timeout (Minuten)"
+        }
+      }
+    }
+  }
+}

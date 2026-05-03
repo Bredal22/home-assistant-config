@@ -5,8 +5,8 @@
       unit_of_measurement: "kr"
       state_class: measurement
       state: >-
-        {{ (state_attr('sensor.yahoofinance_pfigla_co','regularMarketPrice') | float * 606 )
-           + (state_attr('sensor.yahoofinance_pfibaa_co','regularMarketPrice') | float * 2089) }}
+        {{ (state_attr('sensor.yahoofinance_pfigla_co','regularMarketPrice') | float(0) * 606 )
+           + (state_attr('sensor.yahoofinance_pfibaa_co','regularMarketPrice') | float(0) * 2089) }}
 
     # --- Udendørs temperatur ---
     - name: "temperature_ext"
@@ -92,7 +92,7 @@
       state: >-
         {% set t = state_attr('sensor.c3_alarm_0', 'alarmTime') %}
         {% if t not in [none, 'unknown', 'unavailable', ''] %}
-          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S") }}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
         {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
           {{ this.state }}
         {% else %}
@@ -129,7 +129,7 @@
       state: >-
         {% set t = state_attr('sensor.c3_alarm_1','alarmTime') %}
         {% if t %}
-          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S") }}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
         {% else %}
           —
         {% endif %}
@@ -164,7 +164,7 @@
       state: >-
         {% set t = state_attr('sensor.c3_alarm_2','alarmTime') %}
         {% if t %}
-          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S") }}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
         {% else %}
           —
         {% endif %}
@@ -199,7 +199,7 @@
       state: >-
         {% set t = state_attr('sensor.c3_alarm_3','alarmTime') %}
         {% if t %}
-          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S") }}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
         {% else %}
           —
         {% endif %}
@@ -234,7 +234,7 @@
       state: >-
         {% set t = state_attr('sensor.c3_alarm_4','alarmTime') %}
         {% if t %}
-          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S") }}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
         {% else %}
           —
         {% endif %}
@@ -293,7 +293,7 @@
     - name: "C3 sidst opdateret"
       unique_id: c3_last_update
       icon: mdi:update
-      availability: "{{ states.sensor.c3_alarm_0 is not none }}"
+      availability: "{{ states('sensor.c3_alarm_0') not in ['unknown','unavailable',''] }}"
       state: >-
         {% set alarm = states.sensor.c3_alarm_0 %}
         {% set last = alarm.last_updated if alarm is not none else none %}
@@ -315,10 +315,23 @@
           {% set alarm = states.sensor.c3_alarm_0 %}
           {% set last = alarm.last_updated if alarm is not none else none %}
           {% if last %}
-            {{ as_timestamp(last) | timestamp_custom("%Y-%m-%d %H:%M:%S") }}
+            {{ as_timestamp(last) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
           {% else %}
             ukendt
           {% endif %}
+
+    - name: "C3 alarm 0 adresse (waze)"
+      unique_id: c3_alarm_0_address_waze
+      icon: mdi:map-marker
+      state: >-
+        {% set a = states('sensor.c3_alarm_0_adresse') | trim %}
+        {% if a in ['—','unknown','unavailable',''] %}
+          unknown
+        {% elif 'denmark' in (a | lower) or 'danmark' in (a | lower) %}
+          {{ a }}
+        {% else %}
+          {{ a ~ ', Denmark' }}
+        {% endif %}
 
 - binary_sensor:
     - name: "C3 OK"

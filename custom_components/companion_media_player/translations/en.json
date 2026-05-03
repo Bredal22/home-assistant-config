@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Companion Media Player",
+        "description": "This integration supports Android devices only. The Media Session sensor must be enabled. Volume control is available only when the volume_level_music sensor is enabled. Actions from Home Assistant are sent almost in real time, while updates from the device depend on Companion App sensor reporting. See Companion App sensor docs for details."
+      }
+    },
+    "abort": {
+      "already_configured": "Companion Media Player is already configured."
+    }
+  },
+  "entity": {
+    "media_player": {
+      "player": {
+        "name": "Media Player"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Companion Media Player Options",
+        "description": "Configure the default behavior for all media players.",
+        "data": {
+          "session_timeout": "Session timeout (minutes)"
+        }
+      }
+    }
+  }
+}
