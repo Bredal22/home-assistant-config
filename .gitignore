@@ -34,6 +34,7 @@ home-assistant.log.fault
 .storage/
 .cloud/
 .backup/
+.cache/
 backup/
 backups/
 tmp/
