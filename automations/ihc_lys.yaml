@@ -1,0 +1,21 @@
+- id: "1659297189262"
+  alias: Sun i IHC - Set at sunrise
+  mode: single
+  triggers:
+    - trigger: sun
+      event: sunrise
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.sun
+
+- id: "1659355250851"
+  alias: Sun in IHC - Reset at sunset
+  mode: single
+  triggers:
+    - trigger: sun
+      event: sunset
+  actions:
+    - action: switch.turn_off
+      target:
+        entity_id: switch.sun
