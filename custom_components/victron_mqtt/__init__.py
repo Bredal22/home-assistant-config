@@ -1,7 +1,5 @@
 """The victron_mqtt integration."""
 
-import asyncio
-import importlib.metadata
 import logging
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
@@ -14,6 +12,7 @@ import homeassistant.helpers.config_validation as cv
 
 from .const import ATTR_DEVICE_ID, ATTR_METRIC_ID, ATTR_VALUE, CONF_SIMPLE_NAMING, DOMAIN, SERVICE_PUBLISH
 from .hub import Hub, VictronGxConfigEntry
+from ._vendor import VICTRON_MQTT_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 _VICTRON_MQTT_LOGGER = logging.getLogger("victron_mqtt")
@@ -66,20 +65,13 @@ async def async_setup_services(hass: HomeAssistant, entry: VictronGxConfigEntry)
     _LOGGER.info("Victron MQTT services registered")
 
 
-async def get_package_version(package_name: str) -> str:
-    return await asyncio.get_event_loop().run_in_executor(
-        None, importlib.metadata.version, package_name
-    )
-
-
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the integration."""
     version = getattr(hass.data.get("integrations", {}).get(DOMAIN), "version", "unknown")
-    victron_mqtt_version = await get_package_version("victron_mqtt")
     _LOGGER.info(
         "Setting up victron_mqtt integration. Version: %s. victron_mqtt package version: %s",
         version,
-        victron_mqtt_version,
+        VICTRON_MQTT_VERSION,
     )
 
     return True

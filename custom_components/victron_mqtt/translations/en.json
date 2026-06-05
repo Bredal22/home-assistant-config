@@ -127,6 +127,13 @@
           "on": "On"
         }
       },
+      "hub4_force_charge": {
+        "name": "Force charge",
+        "state": {
+          "off": "Off",
+          "on": "On"
+        }
+      },
       "inverter_alarm_high_temperature": {
         "name": "High temperature alarm",
         "state": {
@@ -274,14 +281,14 @@
         }
       },
       "system_settings_overvoltage_feedin": {
-        "name": "ESS feed-in excess solar charger power",
+        "name": "DC-coupled PV - feed in excess",
         "state": {
           "off": "Off",
           "on": "On"
         }
       },
       "system_settings_prevent_ac_feedin": {
-        "name": "ESS PV inverter zero feed-in",
+        "name": "AC-coupled PV - feed in excess",
         "state": {
           "off": "Off",
           "on": "On"
@@ -677,7 +684,8 @@
         "unit_of_measurement": "syncs"
       },
       "battery_average_discharge": {
-        "name": "Average discharge"
+        "name": "Average discharge",
+        "unit_of_measurement": "Ah"
       },
       "battery_capacity": {
         "name": "Capacity",
@@ -712,7 +720,8 @@
         "name": "DC bus current"
       },
       "battery_deepest_discharge": {
-        "name": "Deepest discharge"
+        "name": "Deepest discharge",
+        "unit_of_measurement": "Ah"
       },
       "battery_discharged_energy": {
         "name": "Discharged energy"
@@ -754,7 +763,8 @@
         }
       },
       "battery_last_discharge": {
-        "name": "Last discharge"
+        "name": "Last discharge",
+        "unit_of_measurement": "Ah"
       },
       "battery_low_cell_voltage": {
         "name": "Low cell voltage",
@@ -1355,8 +1365,7 @@
         "name": "Installation power"
       },
       "meteo_irradiance": {
-        "name": "Irradiance",
-        "unit_of_measurement": "W/m²"
+        "name": "Irradiance"
       },
       "meteo_time_since_last_sun": {
         "name": "Time since last sun"
@@ -1379,6 +1388,9 @@
       "multi_acin_voltage_phase": {
         "name": "Voltage on {phase}"
       },
+      "multi_acout_current_phase": {
+        "name": "Output current on {phase}"
+      },
       "multi_acout_output_current_phase": {
         "name": "AC-out-{output} current on {phase}"
       },
@@ -1388,11 +1400,17 @@
       "multi_acout_output_voltage_phase": {
         "name": "AC-out-{output} voltage on {phase}"
       },
+      "multi_acout_power_phase": {
+        "name": "Output power on {phase}"
+      },
       "multi_acout_to_acin1": {
         "name": "AC-out to AC-in-1"
       },
       "multi_acout_to_inverter": {
         "name": "AC-out to inverter"
+      },
+      "multi_acout_voltage_phase": {
+        "name": "Output voltage on {phase}"
       },
       "multi_active_input": {
         "name": "Active AC input",
@@ -1440,6 +1458,9 @@
       },
       "multi_mppt_mppt_id_yield_yesterday": {
         "name": "MPPT {mppt_id} yield yesterday"
+      },
+      "multi_mppt_mpptnumber_current": {
+        "name": "MPPT {mpptnumber} current"
       },
       "multi_mppt_mpptnumber_power": {
         "name": "MPPT {mpptnumber} power"
@@ -1617,6 +1638,9 @@
           "voltage_current_limited": "Voltage/current limited"
         }
       },
+      "solarcharger_pv_current": {
+        "name": "PV current"
+      },
       "solarcharger_state": {
         "name": "State",
         "state": {
@@ -1652,6 +1676,9 @@
       },
       "solarcharger_time_in_float_today": {
         "name": "Time in float today"
+      },
+      "solarcharger_tracker_tracker_current": {
+        "name": "PV tracker {tracker} current"
       },
       "solarcharger_tracker_tracker_max_power_today": {
         "name": "Tracker {tracker} max power today"
@@ -1892,7 +1919,7 @@
         }
       },
       "system_ess_batterylife_state_sensor": {
-        "name": "ESS BatteryLife state (detailed)",
+        "name": "ESS BatteryLife state",
         "state": {
           "keep_batteries_charged": "'Keep batteries charged' mode enabled",
           "recharge": "Recharge, SoC dropped 5% or more below minimum SoC",
@@ -2405,6 +2432,13 @@
           "on": "On"
         }
       },
+      "hub4_force_charge": {
+        "name": "Force charge",
+        "state": {
+          "off": "Off",
+          "on": "On"
+        }
+      },
       "multi_disable_charge": {
         "name": "ESS disable charge",
         "state": {
@@ -2468,14 +2502,14 @@
         }
       },
       "system_settings_overvoltage_feedin": {
-        "name": "ESS feed-in excess solar charger power",
+        "name": "DC-coupled PV - feed in excess",
         "state": {
           "off": "Off",
           "on": "On"
         }
       },
       "system_settings_prevent_ac_feedin": {
-        "name": "ESS PV inverter zero feed-in",
+        "name": "AC-coupled PV - feed in excess",
         "state": {
           "off": "Off",
           "on": "On"

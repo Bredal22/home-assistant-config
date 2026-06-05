@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from victron_mqtt import (
+from ._vendor.victron_mqtt import (
     Device as VictronVenusDevice,
     FormulaMetric as VictronFormulaMetric,
     Metric as VictronVenusMetric,
@@ -41,8 +41,8 @@ METRIC_TYPE_TO_DEVICE_CLASS: dict[MetricType, SensorDeviceClass] = {
     MetricType.SPEED: SensorDeviceClass.SPEED,
     MetricType.LIQUID_VOLUME: SensorDeviceClass.VOLUME_STORAGE,
     MetricType.DURATION: SensorDeviceClass.DURATION,
-    MetricType.IRRADIANCE: SensorDeviceClass.IRRADIANCE,
     MetricType.ENUM: SensorDeviceClass.ENUM,
+    MetricType.IRRADIANCE: SensorDeviceClass.IRRADIANCE,
 }
 
 METRIC_NATURE_TO_STATE_CLASS: dict[MetricNature, SensorStateClass] = {
