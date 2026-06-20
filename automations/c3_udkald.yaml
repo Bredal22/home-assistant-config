@@ -118,7 +118,7 @@
 
   actions:
     - wait_template: >-
-        {{ 'Silkeborg' in (states('sensor.c3_alarm_0_stationer') or '') }}
+        {{ 'Silkeborg' in (state_attr('sensor.c3_alarm_0', 'stationNames') or '') }}
       timeout: "00:06:00"
       continue_on_timeout: false
 
@@ -190,7 +190,7 @@
 
   actions:
     - wait_template: >-
-        {{ 'Silkeborg' in (states('sensor.c3_alarm_0_stationer') or '') }}
+        {{ 'Silkeborg' in (state_attr('sensor.c3_alarm_0', 'stationNames') or '') }}
       timeout: "00:02:00"
       continue_on_timeout: false
 
