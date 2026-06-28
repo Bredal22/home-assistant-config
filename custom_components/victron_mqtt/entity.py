@@ -3,7 +3,11 @@
 from abc import abstractmethod
 from typing import Any
 
-from ._vendor.victron_mqtt import Device as VictronVenusDevice, Metric as VictronVenusMetric
+from ._vendor.victron_mqtt import (
+    Device as VictronVenusDevice,
+    Metric as VictronVenusMetric,
+    MetricType,
+)
 
 from homeassistant.const import EntityCategory
 from homeassistant.core import callback
@@ -13,7 +17,30 @@ from homeassistant.helpers.entity import Entity
 # Entities that should be marked as diagnostic
 ENTITIES_CATEGORY_DIAGNOSTIC = ["system_heartbeat", "solarcharger_device_off_reason"]
 # Entities that should be disabled by default
-ENTITIES_DISABLE_BY_DEFAULT = ["system_heartbeat", "solarcharger_device_off_reason"]
+ENTITIES_DISABLE_BY_DEFAULT = [
+    "system_heartbeat",
+    "solarcharger_device_off_reason",
+    # Per-tracker solarcharger entities — multiply quickly on multi-tracker chargers
+    # (e.g. RS 450/200 = 4 trackers × 8 entities = 32 extra recorded entities per charger).
+    # Enabled individually by users who need the per-string breakdown.
+    "solarcharger_tracker_{tracker}_power",
+    "solarcharger_tracker_{tracker}_voltage",
+    "solarcharger_tracker_{tracker}_current",
+    "solarcharger_tracker_{tracker}_operation_mode",
+    "solarcharger_tracker_{tracker}_name",
+    "solarcharger_tracker_{tracker}_max_power_today",
+    "solarcharger_tracker_{tracker}_max_voltage_today",
+    "solarcharger_tracker_{tracker}_yield_today",
+    # Per-MPPT multi-device entities — same reason
+    "multi_mppt_{mppt_id}_yield_today",
+    "multi_mppt_{mppt_id}_yield_yesterday",
+    "multi_mppt_{mpptnumber}_state",
+    "multi_mppt_{mpptnumber}_power",
+    "multi_mppt_{mpptnumber}_voltage",
+    "multi_mppt_{mpptnumber}_current",
+]
+# Units that must be provided directly instead of via localization.
+SPECIAL_NATIVE_UNITS = {"%", "Ah"}
 
 ENTITY_PREFIX = "victron_mqtt"
 
@@ -54,11 +81,6 @@ class VictronBaseEntity(Entity):
         if metric.main_topic:
             self._attr_name = None
 
-        # Special case for "%" as it should not be coming from the localization file
-        self._attr_native_unit_of_measurement = (
-            "%" if metric.unit_of_measurement == "%" else None
-        )
-
         self._attr_entity_category = (
             EntityCategory.DIAGNOSTIC
             if metric.generic_short_id in ENTITIES_CATEGORY_DIAGNOSTIC
@@ -67,6 +89,31 @@ class VictronBaseEntity(Entity):
         self._attr_entity_registry_enabled_default = (
             metric.generic_short_id not in ENTITIES_DISABLE_BY_DEFAULT
         )
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return the metric unit before entity registration."""
+        if self._metric.metric_type == MetricType.COST:
+            return self.hass.config.currency
+
+        unit_of_measurement = self._metric.unit_of_measurement
+        # We need to provide a native unit in three cases:
+        if (
+            # 1. Special units which will never need a translation and therefore will not be included in the translation file.
+            unit_of_measurement in SPECIAL_NATIVE_UNITS
+            # 2. When there is known device class which support multiple units. In this case
+            # we publish what we have and HA will allow conversion to other supported units.
+            # We specifically don't put those cases in the translation file by the merge script
+            # not to waste translation resources so it has to come from here.
+            or self._attr_device_class is not None
+            # 3. Dynamic units come from user-configured MQTT topics (e.g.
+            # SwitchableOutput Settings/Unit) and have no translation file
+            # entry, so we must set the unit programmatically.
+            or self._metric.metric_type == MetricType.DYNAMIC
+        ):
+            return unit_of_measurement
+
+        return None
 
     @callback
     @abstractmethod

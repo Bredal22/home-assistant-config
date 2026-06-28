@@ -16,6 +16,7 @@ class DeviceType(VictronDeviceEnum):
     GRID = ("grid", "grid", "Grid")
     VEBUS = ("vebus", "vebus", "VE.Bus")
     EVCHARGER = ("evcharger", "evcharger", "EV charging station")
+    EV = ("ev", "ev", "Electric vehicle")
     PVINVERTER = ("pvinverter", "pvinverter", "PV inverter")
     TEMPERATURE = ("temperature", "temperature", "Temperature")
     GENERATOR = ("generator", "generator", "Generator")
@@ -32,7 +33,8 @@ class DeviceType(VictronDeviceEnum):
     )  # Orion XS 1400 in alternator to battery charging mode.
     SWITCH = ("switch", "switch", "Switch")
     GPS = ("gps", "gps", "GPS")
-    SYSTEM_SETUP = ("SystemSetup", "system_setup", "System setup", "system")  # Should be mapped to SYSTEM
+    SYSTEM_SETUP = ("SystemSetup", "system_setup", "<Not used>", "system")  # Should be mapped to SYSTEM
+    SERVICES = ("Services", "services", "<Not used>", "system")  # Should be mapped to SYSTEM
     TRANSFER_SWITCH = ("TransferSwitch", "transfer_switch", "Transfer switch")
     DIGITAL_INPUT = ("digitalinput", "digital_input", "Digital input")
     DC_SYSTEM = ("dcsystem", "dc_system", "DC system")
@@ -44,13 +46,28 @@ class DeviceType(VictronDeviceEnum):
         "system",
     )  # For whatever reason some system topics are under platform
     HEATPUMP = ("heatpump", "heatpump", "Heat pump")
+    NETWORK = ("Network", "network", "<Not used>", "system")  # Network settings are under system
     METEO = ("meteo", "meteo", "Irradiance sensor")
-    DYNAMIC_ESS = ("DynamicEss", "dynamic_ess", "Dynamic ESS", "system")  # Dynamic ESS settings are under system
+    DYNAMIC_ESS = ("DynamicEss", "dynamic_ess", "<Not used>", "system")  # Dynamic ESS settings are under system
     ACLOAD = ("acload", "acload", "AC load")
     CHARGER = ("charger", "charger", "Charger")
     HUB4 = ("hub4", "hub4", "Hub4")
-    ACSYSTEM = ("acsystem", "acsystem", "AC system", "system")  # Should be mapped to SYSTEM
+    ACSYSTEM = ("acsystem", "acsystem", "<Not used>", "system")  # Should be mapped to SYSTEM
     DCDC = ("dcdc", "dcdc", "DC/DC charger")  # Orion XS 1400 in battery to battery charging mode.
+
+
+class DVCCMode(VictronEnum):
+    """DVCC (Distributed Voltage and Current Control) mode.
+
+    Bit 0: DVCC enabled (0=off, 1=on)
+    Bit 1: Forced by system/BMS (0=user-controllable, 1=forced)
+    See https://github.com/victronenergy/dbus-systemcalc-py delegates/dvcc.py
+    """
+
+    OFF = (0, "off", "Off")
+    ON = (1, "on", "On")
+    FORCED_OFF = (2, "forced_off", "Forced off")
+    FORCED_ON = (3, "forced_on", "Forced on")
 
 
 class GenericOnOff(VictronEnum):
@@ -65,6 +82,14 @@ class GenericOnOffInverted(VictronEnum):
 
     ON = (0, "on", "On")
     OFF = (1, "off", "Off")
+
+
+class VrmPortalMode(VictronEnum):
+    """VRM Portal access level enum."""
+
+    OFF = (0, "off", "Off")
+    READ_ONLY = (1, "read_only", "Read-only")
+    FULL = (2, "full", "Full")
 
 
 class PreferRenewableEnergyEnum(VictronEnum):
@@ -156,6 +181,20 @@ class EvChargerMode(VictronEnum):
     MANUAL = (0, "manual", "Manual")
     AUTO = (1, "auto", "Auto")
     SCHEDULED_CHARGE = (2, "scheduled_charge", "Scheduled charge")
+
+
+class EvChargingState(VictronEnum):
+    """EV Charging State Enum"""
+
+    NOT_CHARGING = (0, "not_charging", "Not charging")
+    LOW_POWER_MODE = (1, "low_power_mode", "Low power mode")
+    CHARGING = (3, "charging", "Charging")
+    SUSTAIN = (244, "sustain", "Sustain")
+    WAKE_UP = (245, "wake_up", "Wake up")
+    BLOCKED = (250, "blocked", "Blocked")
+    UNAVAILABLE = (255, "unavailable", "Unavailable")
+    DISCHARGING = (256, "discharging", "Discharging")
+    SCHEDULED_CHARGING = (259, "scheduled_charging", "Scheduled charging")
 
 
 class EvChargerPosition(VictronEnum):

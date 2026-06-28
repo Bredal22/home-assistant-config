@@ -36,6 +36,7 @@ class Metric:
         name: str | None = None,
         descriptor: TopicDescriptor | None = None,
         unique_id: str | None = None,
+        display_id: str | None = None,
         short_id: str | None = None,
         key_values: dict[str, str] | None = None,
         hub: Hub | None = None,
@@ -58,6 +59,7 @@ class Metric:
         self._device: Device = device
         self._descriptor: TopicDescriptor = descriptor
         self._unique_id: str = unique_id
+        self._display_id: str = display_id if display_id is not None else unique_id
         self._value: Any = None
         self._short_id: str = short_id
         self._name: str = name
@@ -198,6 +200,17 @@ class Metric:
         return self._unique_id
 
     @property
+    def display_id(self) -> str:
+        """Return the display identifier with the device-type prefix de-duplicated.
+
+        Equal to ``unique_id`` for most metrics.  Where ``short_id`` starts with
+        the device-type prefix, the redundant copy is stripped, giving a cleaner
+        identifier.  See :attr:`ParsedTopic.display_id` for details.
+        The ``unique_id`` is never modified.
+        """
+        return self._display_id
+
+    @property
     def key_values(self) -> dict[str, str]:
         """Return the key_values dictionary as read-only."""
         return self._key_values
@@ -271,7 +284,12 @@ class Metric:
         self._value = value
 
         # In case of non-zero update frequency, respect the update frequency limit only for numerical values
-        if not force and self._hub._update_frequency_seconds is not None and isinstance(value, float | int):
+        if (
+            not force
+            and self._hub._update_frequency_seconds is not None
+            and isinstance(value, float | int)
+            and not isinstance(value, bool)  # bool is a subclass of int, but we only want real numeric sensor values.
+        ):
             elapsed = now - self._last_notified
             if elapsed < self._hub._update_frequency_seconds:
                 _LOGGER.debug(

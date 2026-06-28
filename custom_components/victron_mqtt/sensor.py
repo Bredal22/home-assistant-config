@@ -38,11 +38,17 @@ METRIC_TYPE_TO_DEVICE_CLASS: dict[MetricType, SensorDeviceClass] = {
     MetricType.FREQUENCY: SensorDeviceClass.FREQUENCY,
     MetricType.ELECTRIC_STORAGE_PERCENTAGE: SensorDeviceClass.BATTERY,
     MetricType.TEMPERATURE: SensorDeviceClass.TEMPERATURE,
+    MetricType.HUMIDITY: SensorDeviceClass.HUMIDITY,
+    MetricType.PRESSURE: SensorDeviceClass.PRESSURE,
+    MetricType.DISTANCE: SensorDeviceClass.DISTANCE,
+    MetricType.POWER_FACTOR: SensorDeviceClass.POWER_FACTOR,
+    MetricType.COST: SensorDeviceClass.MONETARY,
     MetricType.SPEED: SensorDeviceClass.SPEED,
     MetricType.LIQUID_VOLUME: SensorDeviceClass.VOLUME_STORAGE,
     MetricType.DURATION: SensorDeviceClass.DURATION,
     MetricType.ENUM: SensorDeviceClass.ENUM,
     MetricType.IRRADIANCE: SensorDeviceClass.IRRADIANCE,
+    MetricType.TIMESTAMP: SensorDeviceClass.TIMESTAMP,
 }
 
 METRIC_NATURE_TO_STATE_CLASS: dict[MetricNature, SensorStateClass] = {
@@ -107,11 +113,6 @@ class VictronSensor(VictronBaseEntity, RestoreSensor):
             self._attr_state_class = METRIC_NATURE_TO_STATE_CLASS.get(
                 metric.metric_nature
             )
-        # Only set native_unit_of_measurement when a device_class is present.
-        # Entities without a device_class get their display unit from
-        # the translation files instead.
-        if self._attr_device_class is not None:
-            self._attr_native_unit_of_measurement = metric.unit_of_measurement
         self._attr_native_value = VictronSensor._normalize_value(metric.value)
 
     @callback
@@ -131,7 +132,6 @@ class VictronSensor(VictronBaseEntity, RestoreSensor):
 
     async def async_added_to_hass(self) -> None:
         """Restore persistent state for FormulaMetric energy sensors."""
-
         # Only restore for cumulative FormulaMetric sensors (TOTAL / TOTAL_INCREASING).
         # These metrics start from 0 on each HA restart, so we restore the
         # previous accumulated value as a baseline and add new increments on top.

@@ -19,6 +19,7 @@ from ._victron_enums import (
     DigitalInputInputState,
     DigitalInputState,
     DigitalInputType,
+    DVCCMode,
     ErrorCode,
     ESSMode,
     ESSModeHub4,
@@ -27,6 +28,7 @@ from ._victron_enums import (
     EvChargerMode,
     EvChargerPosition,
     EvChargerStatus,
+    EvChargingState,
     FluidType,
     GeneratorRunningByConditionCode,
     GenericAlarmEnum,
@@ -42,6 +44,7 @@ from ._victron_enums import (
     TemperatureStatus,
     TemperatureType,
     VictronDeviceEnum,
+    VrmPortalMode,
 )
 from .constants import MetricKind, MetricNature, MetricType, OperationMode, RangeType, VictronEnum
 from .data_classes import GpsLocation
@@ -74,6 +77,7 @@ __all__ = [
     "DESSReactiveStrategy",
     "DESSRestrictions",
     "DESSStrategy",
+    "DVCCMode",
     "Device",
     "DeviceType",
     "DigitalInputInputState",
@@ -87,6 +91,7 @@ __all__ = [
     "EvChargerMode",
     "EvChargerPosition",
     "EvChargerStatus",
+    "EvChargingState",
     "FluidType",
     "FormulaMetric",
     "GeneratorRunningByConditionCode",
@@ -116,5 +121,6 @@ __all__ = [
     "TopicNotFoundError",
     "VictronDeviceEnum",
     "VictronEnum",
+    "VrmPortalMode",
     "WritableMetric",
 ]

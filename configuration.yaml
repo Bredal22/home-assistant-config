@@ -10,11 +10,11 @@ script: !include scripts.yaml
 scene: !include scenes.yaml
 template: !include templates.yaml
 
-# Bluetooth LE Tracker
-device_tracker:
-  - platform: bluetooth_le_tracker
-    new_device_defaults:
-      track_new_devices: true
+# Bluetooth LE Tracker - erstattes af Bermuda BLE Trilateration
+#device_tracker:
+#  - platform: bluetooth_le_tracker
+#    new_device_defaults:
+#      track_new_devices: true
 
 # C3 API-INTEGRATION
 rest: !include c3_rest.yaml
