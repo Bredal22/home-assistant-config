@@ -1,0 +1,8 @@
+- platform: statistics
+  name: "Solcellebatteri hvilespænding"
+  entity_id: sensor.victron_smartsolar_mppt_battery_voltage
+  state_characteristic: value_min
+  max_age:
+    hours: 18
+  sampling_size: 2000
+  precision: 3
