@@ -5,20 +5,11 @@ default_config:
 tts:
   - platform: google_translate
 
-automation: !include_dir_merge_list automations/
-script: !include scripts.yaml
-scene: !include scenes.yaml
-sensor: !include sensors.yaml
-template: !include_dir_merge_list templates/
-
-# Bluetooth LE Tracker - erstattes af Bermuda BLE Trilateration
-#device_tracker:
-#  - platform: bluetooth_le_tracker
-#    new_device_defaults:
-#      track_new_devices: true
-
-# C3 API-INTEGRATION
-rest: !include c3_rest.yaml
+homeassistant:
+  packages: !include_dir_named packages/
+  customize:
+    sensor.outdoor_absolute_humidity:
+      unit_of_measurement: "g/m³"
 
 # Extend data logging
 recorder:
@@ -46,112 +37,9 @@ sonos:
       - 192.168.1.192
       - 192.168.1.234
 
-  # Cloudflare (deaktiveret)
-# http:
-#   use_x_forwarded_for: true
-#   trusted_proxies:
-#     - 172.30.33.0/24
-#   ip_ban_enabled: true
-#   login_attempts_threshold: 5
-
-# IHC
-ihc:
-  - url: "http://192.168.1.99"
-    username: !secret ihc_user
-    password: !secret ihc_pass
-    auto_setup: false
-    info: true
-    switch:
-      - id: 241682
-        name: "Spisebord"
-      - id: 1132818
-        name: "Entre"
-      - id: 1186578
-        name: "Hoveddør og carport"
-      - id: 851218
-        name: "Indkørsel"
-      - id: 1239826
-        name: "Køkken"
-      - id: 282898
-        name: "Stikkontakter"
-      - id: 1318418
-        name: "Bryggers"
-      - id: 1290258
-        name: "Viktualierum"
-      - id: 1460753
-        name: "Vagt"
-      - id: 1461009
-        name: "Sun"
-
-# Yahoo Finance
-yahoofinance:
-  symbols:
-    - "PFIGLA.CO"
-    - "PFIBAA.CO"
-  scan_interval:
-    hours: 1
-  show_trending_icon: true
-
 # Brændstofpriser
 fuelprices_dk:
   companies:
     - "ok"
   fueltypes:
     - "oktan 95"
-
-homeassistant:
-  customize:
-    sensor.outdoor_absolute_humidity:
-      unit_of_measurement: "g/m³"
-
-input_boolean:
-  # On/off switch for C3 forespørgsler
-  c3_enabled:
-    name: "C3 forespørgsler"
-    icon: mdi:toggle-switch
-
-  # Udkald - Vagt og Silkeborg kaldt
-  udkald_silkeborg:
-    name: "Udkald Silkeborg"
-    icon: mdi:alarm-light
-
-  # Vagt - Automatisk fra GP
-  vagt:
-    name: "Allan vagt"
-    icon: mdi:shield-account
-
-# LoRa
-mqtt:
-  sensor:
-    - name: "NodeC Latitude"
-      state_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
-      value_template: >
-        {% if value_json.type == 'position' and value_json.from == 463840120 %}
-          {{ value_json.payload.latitude_i | float / 10000000 }}
-        {% else %}
-          {{ states('sensor.nodec_latitude') }}
-        {% endif %}
-      unit_of_measurement: "°"
-
-    - name: "NodeC Longitude"
-      state_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
-      value_template: >
-        {% if value_json.type == 'position' and value_json.from == 463840120 %}
-          {{ value_json.payload.longitude_i | float / 10000000 }}
-        {% else %}
-          {{ states('sensor.nodec_longitude') }}
-        {% endif %}
-      unit_of_measurement: "°"
-
-  device_tracker:
-    - name: "NodeC Bil"
-      state_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
-      json_attributes_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
-      json_attributes_template: >
-        {% if value_json.type == 'position' and value_json.from == 463840120 %}
-          {{ {'latitude': value_json.payload.latitude_i / 10000000,
-              'longitude': value_json.payload.longitude_i / 10000000,
-              'gps_accuracy': 10} | tojson }}
-        {% else %}
-          {{ {} | tojson }}
-        {% endif %}
