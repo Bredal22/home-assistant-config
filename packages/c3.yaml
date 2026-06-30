@@ -1,0 +1,829 @@
+input_boolean:
+  c3_enabled:
+    name: "C3 forespørgsler"
+    icon: mdi:toggle-switch
+
+  udkald_silkeborg:
+    name: "Udkald Silkeborg"
+    icon: mdi:alarm-light
+
+rest:
+  # --- C3: Access token ---
+  - resource: !secret c3_token_url
+    method: POST
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+      Accept: application/json
+    payload: !secret c3_token_payload
+    timeout: 20
+    scan_interval: 86400
+    sensor:
+      - name: "C3 access token"
+        unique_id: c3_access_token
+        value_template: >-
+          {% if value_json is defined
+                and value_json.access_token is defined
+                and (value_json.access_token | string | length) > 0 %}
+            OK
+          {% else %}
+            FAIL
+          {% endif %}
+        json_attributes:
+          - access_token
+          - expires_in
+          - token_type
+          - error
+          - error_description
+
+  # --- C3: Hent alarmer ---
+  - resource: "https://c3ng-fire-station-screen-latest-alarms-widget-api.rm-group.dk/LatestAlarms/63505d920f799a0cd5d39c80?c3ClassicOrganization=OrgMJBR&numberOfLatestAlarms=10"
+    method: GET
+    headers:
+      Authorization: >-
+        Bearer {{ state_attr('sensor.c3_access_token', 'access_token') }}
+      User-Agent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0"
+      Accept-Language: "da,en-US;q=0.7,en;q=0.3"
+      Accept: "application/json, text/plain, */*"
+      Referer: "https://c3ng.rm-group.dk/"
+      Origin: "https://c3ng.rm-group.dk"
+    timeout: 20
+    scan_interval: 86400
+    sensor:
+      - name: "C3 alarmer (antal)"
+        unique_id: c3_alarms_count
+        value_template: >-
+          {% set data = value_json if value_json is defined else [] %}
+          {{ (data | length) if data is iterable else 0 }}
+
+      - name: "C3 alarm 0"
+        unique_id: c3_alarm_0
+        value_template: >-
+          {% set data = value_json if value_json is defined else [] %}
+          {% set a = data[0] if (data is iterable and (data | length) > 0) else dict() %}
+          {{ a.id if a is mapping and a.id is defined else 0 }}
+        json_attributes_path: "$[0]"
+        json_attributes:
+          - id
+          - alarmTime
+          - address
+          - alarmReceivedFromText
+          - firstReportsWordingText
+          - stationNames
+          - vehicleNames
+
+      - name: "C3 alarm 1"
+        unique_id: c3_alarm_1
+        value_template: >-
+          {% set data = value_json if value_json is defined else [] %}
+          {% set a = data[1] if (data is iterable and (data | length) > 1) else dict() %}
+          {{ a.id if a is mapping and a.id is defined else 0 }}
+        json_attributes_path: "$[1]"
+        json_attributes:
+          - id
+          - alarmTime
+          - address
+          - alarmReceivedFromText
+          - firstReportsWordingText
+          - stationNames
+          - vehicleNames
+
+      - name: "C3 alarm 2"
+        unique_id: c3_alarm_2
+        value_template: >-
+          {% set data = value_json if value_json is defined else [] %}
+          {% set a = data[2] if (data is iterable and (data | length) > 2) else dict() %}
+          {{ a.id if a is mapping and a.id is defined else 0 }}
+        json_attributes_path: "$[2]"
+        json_attributes:
+          - id
+          - alarmTime
+          - address
+          - alarmReceivedFromText
+          - firstReportsWordingText
+          - stationNames
+          - vehicleNames
+
+      - name: "C3 alarm 3"
+        unique_id: c3_alarm_3
+        value_template: >-
+          {% set data = value_json if value_json is defined else [] %}
+          {% set a = data[3] if (data is iterable and (data | length) > 3) else dict() %}
+          {{ a.id if a is mapping and a.id is defined else 0 }}
+        json_attributes_path: "$[3]"
+        json_attributes:
+          - id
+          - alarmTime
+          - address
+          - alarmReceivedFromText
+          - firstReportsWordingText
+          - stationNames
+          - vehicleNames
+
+      - name: "C3 alarm 4"
+        unique_id: c3_alarm_4
+        value_template: >-
+          {% set data = value_json if value_json is defined else [] %}
+          {% set a = data[4] if (data is iterable and (data | length) > 4) else dict() %}
+          {{ a.id if a is mapping and a.id is defined else 0 }}
+        json_attributes_path: "$[4]"
+        json_attributes:
+          - id
+          - alarmTime
+          - address
+          - alarmReceivedFromText
+          - firstReportsWordingText
+          - stationNames
+          - vehicleNames
+
+  # --- C3: Deltid (seneste ændring) ---
+  - resource: "https://c3ng-forms-widget-api.rm-group.dk/FilledForms?metaDataId=64cb70a2ed74aaa6ddb2e7ee&formId=647e1301614267e9e86daa01&page=1&limit=1&sortBy=LastUpdatedOn&sortReverse=True"
+    method: GET
+    headers:
+      Authorization: >-
+        Bearer {{ state_attr('sensor.c3_access_token', 'access_token') }}
+      Accept: "application/json"
+      User-Agent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:146.0) Gecko/20100101 Firefox/146.0"
+      Referer: "https://c3ng.rm-group.dk/"
+      Origin: "https://c3ng.rm-group.dk"
+    timeout: 20
+    scan_interval: 86400
+    sensor:
+      - name: "C3 deltid seneste ændring"
+        unique_id: c3_deltid_lastupdated
+        value_template: >-
+          {{ value_json.data[0].lastUpdatedOn if value_json is mapping and value_json.data is defined and (value_json.data|length)>0 else 'unknown' }}
+        json_attributes_path: "$.data[0].formJsonData.data"
+        json_attributes:
+          - holdleder
+          - i11
+          - chauffor
+          - Rogdykker
+          - Rogdykker1
+          - chauffor1
+          - Rogdykker2
+          - chauffor5
+          - Rogdykker3
+          - chauffor7
+          - Rogdykker8
+          - Rogdykker9
+
+template:
+  - sensor:
+      # --- Alarm 0 (med selv-hold) ---
+      - name: "C3 alarm 0 titel"
+        unique_id: c3_alarm_0_title
+        icon: mdi:alarm-light
+        state: >-
+          {% set a = state_attr('sensor.c3_alarm_0', 'firstReportsWordingText') %}
+          {% if a not in [none, 'unknown', 'unavailable', ''] %}
+            {{ a }}
+          {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+            {{ this.state }}
+          {% else %}
+            Alarm #{{ states('sensor.c3_alarm_0') }}
+          {% endif %}
+
+      - name: "C3 alarm 0 adresse"
+        unique_id: c3_alarm_0_address
+        icon: mdi:map-marker
+        state: >-
+          {% set v = state_attr('sensor.c3_alarm_0', 'address') %}
+          {% if v not in [none, 'unknown', 'unavailable', ''] %}
+            {{ v }}
+          {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+            {{ this.state }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 0 stationer"
+        unique_id: c3_alarm_0_stations
+        icon: mdi:fire-station
+        state: >-
+          {% set v = state_attr('sensor.c3_alarm_0', 'stationNames') %}
+          {% if v not in [none, 'unknown', 'unavailable', ''] %}
+            {{ v }}
+          {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+            {{ this.state }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 0 køretøjer"
+        unique_id: c3_alarm_0_vehicles
+        icon: mdi:fire-truck
+        state: >-
+          {% set v = state_attr('sensor.c3_alarm_0', 'vehicleNames') %}
+          {% if v not in [none, 'unknown', 'unavailable', ''] %}
+            {{ v }}
+          {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+            {{ this.state }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 0 tidspunkt (lokal)"
+        unique_id: c3_alarm_0_time_local
+        icon: mdi:clock-outline
+        state: >-
+          {% set t = state_attr('sensor.c3_alarm_0', 'alarmTime') %}
+          {% if t not in [none, 'unknown', 'unavailable', ''] %}
+            {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+          {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+            {{ this.state }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 0 modtaget fra"
+        unique_id: c3_alarm_0_received_from
+        icon: mdi:phone-incoming
+        state: "{{ state_attr('sensor.c3_alarm_0','alarmReceivedFromText') or '—' }}"
+
+      - name: "C3 alarm 0 adresse (waze)"
+        unique_id: c3_alarm_0_address_waze
+        icon: mdi:map-marker
+        state: >-
+          {% set a = states('sensor.c3_alarm_0_adresse') | trim %}
+          {% if a in ['—','unknown','unavailable',''] %}
+            unknown
+          {% elif 'denmark' in (a | lower) or 'danmark' in (a | lower) %}
+            {{ a }}
+          {% else %}
+            {{ a ~ ', Denmark' }}
+          {% endif %}
+
+      # --- Alarm 1 ---
+      - name: "C3 alarm 1 titel"
+        unique_id: c3_alarm_1_title
+        icon: mdi:alarm-light
+        state: >-
+          {% set a = state_attr('sensor.c3_alarm_1','firstReportsWordingText') %}
+          {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_1') }}{% endif %}
+
+      - name: "C3 alarm 1 adresse"
+        unique_id: c3_alarm_1_address
+        icon: mdi:map-marker
+        state: "{{ state_attr('sensor.c3_alarm_1','address') or '—' }}"
+
+      - name: "C3 alarm 1 stationer"
+        unique_id: c3_alarm_1_stations
+        icon: mdi:fire-station
+        state: "{{ state_attr('sensor.c3_alarm_1','stationNames') or '—' }}"
+
+      - name: "C3 alarm 1 køretøjer"
+        unique_id: c3_alarm_1_vehicles
+        icon: mdi:fire-truck
+        state: "{{ state_attr('sensor.c3_alarm_1','vehicleNames') or '—' }}"
+
+      - name: "C3 alarm 1 tidspunkt (lokal)"
+        unique_id: c3_alarm_1_time_local
+        icon: mdi:clock-outline
+        state: >-
+          {% set t = state_attr('sensor.c3_alarm_1','alarmTime') %}
+          {% if t %}
+            {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 1 modtaget fra"
+        unique_id: c3_alarm_1_received_from
+        icon: mdi:phone-incoming
+        state: "{{ state_attr('sensor.c3_alarm_1','alarmReceivedFromText') or '—' }}"
+
+      # --- Alarm 2 ---
+      - name: "C3 alarm 2 titel"
+        unique_id: c3_alarm_2_title
+        icon: mdi:alarm-light
+        state: >-
+          {% set a = state_attr('sensor.c3_alarm_2','firstReportsWordingText') %}
+          {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_2') }}{% endif %}
+
+      - name: "C3 alarm 2 adresse"
+        unique_id: c3_alarm_2_address
+        icon: mdi:map-marker
+        state: "{{ state_attr('sensor.c3_alarm_2','address') or '—' }}"
+
+      - name: "C3 alarm 2 stationer"
+        unique_id: c3_alarm_2_stations
+        icon: mdi:fire-station
+        state: "{{ state_attr('sensor.c3_alarm_2','stationNames') or '—' }}"
+
+      - name: "C3 alarm 2 køretøjer"
+        unique_id: c3_alarm_2_vehicles
+        icon: mdi:fire-truck
+        state: "{{ state_attr('sensor.c3_alarm_2','vehicleNames') or '—' }}"
+
+      - name: "C3 alarm 2 tidspunkt (lokal)"
+        unique_id: c3_alarm_2_time_local
+        icon: mdi:clock-outline
+        state: >-
+          {% set t = state_attr('sensor.c3_alarm_2','alarmTime') %}
+          {% if t %}
+            {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 2 modtaget fra"
+        unique_id: c3_alarm_2_received_from
+        icon: mdi:phone-incoming
+        state: "{{ state_attr('sensor.c3_alarm_2','alarmReceivedFromText') or '—' }}"
+
+      # --- Alarm 3 ---
+      - name: "C3 alarm 3 titel"
+        unique_id: c3_alarm_3_title
+        icon: mdi:alarm-light
+        state: >-
+          {% set a = state_attr('sensor.c3_alarm_3','firstReportsWordingText') %}
+          {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_3') }}{% endif %}
+
+      - name: "C3 alarm 3 adresse"
+        unique_id: c3_alarm_3_address
+        icon: mdi:map-marker
+        state: "{{ state_attr('sensor.c3_alarm_3','address') or '—' }}"
+
+      - name: "C3 alarm 3 stationer"
+        unique_id: c3_alarm_3_stations
+        icon: mdi:fire-station
+        state: "{{ state_attr('sensor.c3_alarm_3','stationNames') or '—' }}"
+
+      - name: "C3 alarm 3 køretøjer"
+        unique_id: c3_alarm_3_vehicles
+        icon: mdi:fire-truck
+        state: "{{ state_attr('sensor.c3_alarm_3','vehicleNames') or '—' }}"
+
+      - name: "C3 alarm 3 tidspunkt"
+        unique_id: c3_alarm_3_time_local
+        icon: mdi:clock-outline
+        state: >-
+          {% set t = state_attr('sensor.c3_alarm_3','alarmTime') %}
+          {% if t %}
+            {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 3 modtaget fra"
+        unique_id: c3_alarm_3_received_from
+        icon: mdi:phone-incoming
+        state: "{{ state_attr('sensor.c3_alarm_3','alarmReceivedFromText') or '—' }}"
+
+      # --- Alarm 4 ---
+      - name: "C3 alarm 4 titel"
+        unique_id: c3_alarm_4_title
+        icon: mdi:alarm-light
+        state: >-
+          {% set a = state_attr('sensor.c3_alarm_4','firstReportsWordingText') %}
+          {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_4') }}{% endif %}
+
+      - name: "C3 alarm 4 adresse"
+        unique_id: c3_alarm_4_address
+        icon: mdi:map-marker
+        state: "{{ state_attr('sensor.c3_alarm_4','address') or '—' }}"
+
+      - name: "C3 alarm 4 stationer"
+        unique_id: c3_alarm_4_stations
+        icon: mdi:fire-station
+        state: "{{ state_attr('sensor.c3_alarm_4','stationNames') or '—' }}"
+
+      - name: "C3 alarm 4 køretøjer"
+        unique_id: c3_alarm_4_vehicles
+        icon: mdi:fire-truck
+        state: "{{ state_attr('sensor.c3_alarm_4','vehicleNames') or '—' }}"
+
+      - name: "C3 alarm 4 tidspunkt"
+        unique_id: c3_alarm_4_time_local
+        icon: mdi:clock-outline
+        state: >-
+          {% set t = state_attr('sensor.c3_alarm_4','alarmTime') %}
+          {% if t %}
+            {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+          {% else %}
+            —
+          {% endif %}
+
+      - name: "C3 alarm 4 modtaget fra"
+        unique_id: c3_alarm_4_received_from
+        icon: mdi:phone-incoming
+        state: "{{ state_attr('sensor.c3_alarm_4','alarmReceivedFromText') or '—' }}"
+
+      # --- Status og opdateringstid ---
+      - name: "C3 status"
+        unique_id: c3_status
+        icon: mdi:heart-pulse
+        state: >-
+          {% if is_state('input_boolean.c3_enabled','off') %}
+            Pauset
+          {% elif not is_state('sensor.c3_access_token', 'OK') %}
+            Token ugyldigt
+          {% elif states('sensor.c3_alarmer_antal') in ['unknown','unavailable',''] %}
+            API fejl
+          {% else %}
+            {% set n = states('sensor.c3_alarmer_antal') | int(0) %}
+            Data OK ({{ n }})
+          {% endif %}
+        attributes:
+          ok: >-
+            {{ is_state('input_boolean.c3_enabled','on')
+               and is_state('sensor.c3_access_token','OK')
+               and states('sensor.c3_alarmer_antal') not in ['unknown','unavailable',''] }}
+
+      - name: "C3 sidst opdateret"
+        unique_id: c3_last_update
+        icon: mdi:update
+        availability: "{{ states('sensor.c3_alarm_0') not in ['unknown','unavailable',''] }}"
+        state: >-
+          {% set alarm = states.sensor.c3_alarm_0 %}
+          {% set last = alarm.last_updated if alarm is not none else none %}
+          {% if last %}
+            {% set diff = (now() - last).total_seconds() | int %}
+            {% if diff < 60 %}
+              mindre end 1 minut siden
+            {% elif diff < 3600 %}
+              {{ (diff // 60) }} minutter siden
+            {% else %}
+              {{ (diff // 3600) }} timer siden
+            {% endif %}
+          {% else %}
+            ukendt
+          {% endif %}
+        attributes:
+          friendly_name: "C3 sidst opdateret"
+          last_update_local: >-
+            {% set alarm = states.sensor.c3_alarm_0 %}
+            {% set last = alarm.last_updated if alarm is not none else none %}
+            {% if last %}
+              {{ as_timestamp(last) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+            {% else %}
+              ukendt
+            {% endif %}
+
+  - binary_sensor:
+      - name: "C3 OK"
+        unique_id: c3_ok
+        device_class: connectivity
+        state: >-
+          {{ is_state('input_boolean.c3_enabled','on')
+             and is_state('sensor.c3_access_token','OK')
+             and states('sensor.c3_alarmer_antal') not in ['unknown','unavailable',''] }}
+
+automation:
+  - id: 5d8cdd0de7964cd996cc99e48d7bf80c
+    alias: "C3: Opdater straks ved aktivering"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.c3_enabled
+        from: "off"
+        to: "on"
+    conditions: []
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.c3_access_token
+      - wait_template: >-
+          {{ (state_attr('sensor.c3_access_token','access_token') | default('') | length) > 0 }}
+        timeout: "00:00:10"
+        continue_on_timeout: true
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.c3_alarmer_antal
+            - sensor.c3_alarm_0
+            - sensor.c3_alarm_1
+            - sensor.c3_alarm_2
+            - sensor.c3_deltid_seneste_aendring
+
+  - id: 3ee036fe1df04b2e8add15f5ca73a328
+    alias: "C3: Poll token (4 min)"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/4"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.c3_enabled
+        state: "on"
+      - condition: template
+        value_template: "{{ states('sensor.c3_access_token') not in ['unknown','unavailable'] }}"
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.c3_access_token
+
+  - id: c3_update_token_on_start
+    alias: C3 - Opdater token ved opstart
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: state
+        entity_id: input_boolean.c3_enabled
+        state: "on"
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.c3_access_token
+
+  - id: c3_update_alarms_every_30s
+    alias: C3 - Opdater alarmer hvert 30. sekund
+    mode: restart
+    triggers:
+      - trigger: time_pattern
+        seconds: "/30"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.c3_enabled
+        state: "on"
+      - condition: state
+        entity_id: sensor.c3_access_token
+        state: "OK"
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.c3_access_token
+      - wait_template: >-
+          {{ (state_attr('sensor.c3_access_token','access_token') | default('') | length) > 0 }}
+        timeout: "00:00:10"
+        continue_on_timeout: true
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.c3_alarm_0
+            - sensor.c3_deltid_seneste_aendring
+
+  - id: "1763468099555"
+    alias: Silkeborg – C3 alarm 0 notifikation
+    description: Send notifikation når Silkeborg rykker ud på C3 alarm 0
+    mode: parallel
+    triggers:
+      - trigger: state
+        entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none and
+          trigger.to_state is not none and
+          trigger.from_state.state not in ['unknown', 'unavailable', '—'] and
+          trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}
+    actions:
+      - wait_template: >-
+          {{ 'Silkeborg' in (state_attr('sensor.c3_alarm_0', 'stationNames') or '') }}
+        timeout: "00:06:00"
+        continue_on_timeout: false
+      - action: notify.mobile_app_sm_s938b
+        data:
+          title: >-
+            🚒 {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
+          message: >-
+            {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }}
+            kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel')) }}
+            kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
+
+            Alarm: {{ states('sensor.c3_alarm_0_titel') }}
+          data:
+            ttl: 0
+            priority: high
+            channel: c3_standard
+            clickAction: >-
+              {% set dest = states('sensor.c3_alarm_0_adresse')
+                if states('sensor.c3_alarm_0_adresse') not in ['—','unknown','unavailable','']
+                else states('sensor.c3_alarm_0_titel') %}
+              https://www.google.com/maps/dir/?api=1&destination={{ dest | urlencode }}
+
+  - id: "1763468769647"
+    alias: Alle stationer – C3 alarm 0 notifikation
+    description: Send notifikation når C3 alarm 0 skifter til ny melding
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none and
+             trigger.to_state is not none and
+             trigger.from_state.state not in ['unknown', 'unavailable', '—'] and
+             trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}
+    actions:
+      - action: notify.mobile_app_sm_s938b
+        data:
+          title: >-
+            {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
+          message: >-
+            {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }}
+            kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel')) }}
+            kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
+
+            Alarm: {{ states('sensor.c3_alarm_0_titel') }}
+
+  - id: "1763468099600"
+    alias: Flag – Udkald Silkeborg
+    description: Sæt input_boolean.udkald_silkeborg ved udkald til Silkeborg
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none
+             and trigger.to_state is not none
+             and trigger.from_state.state not in ['unknown', 'unavailable', '—']
+             and trigger.to_state.state not in ['unknown', 'unavailable', '—'] }}
+    actions:
+      - wait_template: >-
+          {{ 'Silkeborg' in (state_attr('sensor.c3_alarm_0', 'stationNames') or '') }}
+        timeout: "00:02:00"
+        continue_on_timeout: false
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.udkald_silkeborg
+      - delay: "00:00:10"
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.udkald_silkeborg
+
+  - id: "1763468099601"
+    alias: Silkeborg udkald – Lys ved hoveddør og indkørsel
+    description: Tænd lys ved udkald til Silkeborg når det er mørkt og jeg har vagt
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.udkald_silkeborg
+        from: "off"
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: sun.sun
+        state: "below_horizon"
+      - condition: state
+        entity_id: switch.vagt
+        state: "on"
+    actions:
+      - action: switch.turn_on
+        target:
+          entity_id:
+            - switch.hoveddoer_og_carport
+            - switch.indkoersel
+      - delay: "00:05:00"
+      - action: switch.turn_off
+        target:
+          entity_id:
+            - switch.hoveddoer_og_carport
+            - switch.indkoersel
+
+  - id: "1764761193478"
+    alias: "C3: Test send notifikation til telefon"
+    description: Send notifikation når ny C3 alarm
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: sensor.c3_alarm_0_tidspunkt_lokal
+    conditions: []
+    actions:
+      - action: notify.mobile_app_sm_s938b
+        data:
+          title: >-
+            🚒 {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }} kører
+          message: >-
+            {{ states('sensor.c3_alarm_0_stationer') | default('Station ukendt') }}
+            kører til {{ states('sensor.c3_alarm_0_adresse') | default(states('sensor.c3_alarm_0_titel')) }}
+            kl. {{ states('sensor.c3_alarm_0_tidspunkt_lokal') }}.
+
+            Alarm: {{ states('sensor.c3_alarm_0_titel') }}
+          data:
+            ttl: 0
+            priority: high
+            channel: c3_standard
+            clickAction: >-
+              {% set dest = states('sensor.c3_alarm_0_adresse')
+                if states('sensor.c3_alarm_0_adresse') not in ['—','unknown','unavailable','']
+                else states('sensor.c3_alarm_0_titel') %}
+              https://www.google.com/maps/dir/?api=1&destination={{ dest | urlencode }}
+
+  - id: c3_silkeborg_tts_koretid
+    alias: Silkeborg udkald – TTS med køretid
+    description: TTS 30 sek efter udkald (kræver vagt) med køretid til alarm-adresse
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.udkald_silkeborg
+        from: "off"
+        to: "on"
+    conditions: []
+    actions:
+      - condition: or
+        conditions:
+          - condition: state
+            entity_id: switch.vagt
+            state: "on"
+          - condition: state
+            entity_id: input_boolean.vagt
+            state: "on"
+      - delay: "00:00:30"
+      - condition: or
+        conditions:
+          - condition: state
+            entity_id: switch.vagt
+            state: "on"
+          - condition: state
+            entity_id: input_boolean.vagt
+            state: "on"
+      - variables:
+          alarm_title: "{{ states('sensor.c3_alarm_0_titel') | default('ukendt alarm') }}"
+          dest_addr: "{{ states('sensor.c3_alarm_0_adresse_waze') }}"
+          alarm_address: >-
+            {{ states('sensor.c3_alarm_0_adresse')
+               if states('sensor.c3_alarm_0_adresse') not in ['—','unknown','unavailable','']
+               else dest_addr }}
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ dest_addr not in ['—','unknown','unavailable',''] }}"
+            sequence:
+              - action: waze_travel_time.get_travel_times
+                data:
+                  region: "eu"
+                  units: "metric"
+                  vehicle_type: "car"
+                  origin: zone.home
+                  destination: "{{ dest_addr }}"
+                  realtime: true
+                response_variable: waze
+              - variables:
+                  drive_minutes: >-
+                    {% set d = 0 %}
+                    {% if waze is defined and waze.routes is defined and (waze.routes | count) > 0 %}
+                      {% set d = waze.routes[0].duration | float(0) %}
+                    {% endif %}
+                    {{ d | round(0) | int(0) }}
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ drive_minutes > 0 }}"
+                    sequence:
+                      - action: notify.mobile_app_sm_s938b
+                        data:
+                          message: "TTS"
+                          data:
+                            tts_text: >-
+                              Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                              Køretiden er {{ drive_minutes }} minutter.
+                            media_stream: alarm_stream
+                            ttl: 0
+                            priority: high
+                default:
+                  - action: notify.mobile_app_sm_s938b
+                    data:
+                      message: "TTS"
+                      data:
+                        tts_text: >-
+                          Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                          Køretiden er ukendt.
+                        media_stream: alarm_stream
+                        ttl: 0
+                        priority: high
+        default:
+          - action: notify.mobile_app_sm_s938b
+            data:
+              message: "TTS"
+              data:
+                tts_text: >-
+                  Du kører til "{{ alarm_title }}". Adressen er {{ alarm_address }}.
+                  Køretiden er ukendt.
+                media_stream: alarm_stream
+                ttl: 0
+                priority: high
+
+  - id: c3_watchdog_fejl
+    alias: C3 – watchdog ved fejl
+    description: Giv besked hvis C3 har været nede i mindst 10 minutter
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.c3_ok
+        to: "off"
+        for:
+          minutes: 10
+    conditions:
+      - condition: state
+        entity_id: input_boolean.c3_enabled
+        state: "on"
+    actions:
+      - action: notify.mobile_app_sm_s938b
+        data:
+          title: "C3-fejl (watchdog)"
+          message: >-
+            C3 har været nede i mindst 10 minutter.
+            Status: {{ states('sensor.c3_status') }}.
+            Sidst opdateret: {{ state_attr('sensor.c3_sidst_opdateret', 'last_update_local') }}
+      - action: persistent_notification.create
+        data:
+          title: "C3-fejl"
+          message: >-
+            C3 OK: {{ states('binary_sensor.c3_ok') }}
+            Sidst opdateret: {{ state_attr('sensor.c3_sidst_opdateret', 'last_update_local') }}

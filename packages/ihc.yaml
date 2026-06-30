@@ -1,0 +1,50 @@
+ihc:
+  - url: "http://192.168.1.99"
+    username: !secret ihc_user
+    password: !secret ihc_pass
+    auto_setup: false
+    info: true
+    switch:
+      - id: 241682
+        name: "Spisebord"
+      - id: 1132818
+        name: "Entre"
+      - id: 1186578
+        name: "Hoveddør og carport"
+      - id: 851218
+        name: "Indkørsel"
+      - id: 1239826
+        name: "Køkken"
+      - id: 282898
+        name: "Stikkontakter"
+      - id: 1318418
+        name: "Bryggers"
+      - id: 1290258
+        name: "Viktualierum"
+      - id: 1460753
+        name: "Vagt"
+      - id: 1461009
+        name: "Sun"
+
+automation:
+  - id: "1659297189262"
+    alias: Sun i IHC - Set at sunrise
+    mode: single
+    triggers:
+      - trigger: sun
+        event: sunrise
+    actions:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.sun
+
+  - id: "1659355250851"
+    alias: Sun in IHC - Reset at sunset
+    mode: single
+    triggers:
+      - trigger: sun
+        event: sunset
+    actions:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.sun

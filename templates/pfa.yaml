@@ -1,9 +1,0 @@
-- sensor:
-    # --- PFA Total ---
-    - name: "PFA"
-      unique_id: pfa_total
-      unit_of_measurement: "kr"
-      state_class: measurement
-      state: >-
-        {{ (state_attr('sensor.yahoofinance_pfigla_co','regularMarketPrice') | float(0) * 606 )
-           + (state_attr('sensor.yahoofinance_pfibaa_co','regularMarketPrice') | float(0) * 2089) }}

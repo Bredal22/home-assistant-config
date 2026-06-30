@@ -1,0 +1,54 @@
+mqtt:
+  sensor:
+    - name: "NodeC Latitude"
+      state_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
+      value_template: >
+        {% if value_json.type == 'position' and value_json.from == 463840120 %}
+          {{ value_json.payload.latitude_i | float / 10000000 }}
+        {% else %}
+          {{ states('sensor.nodec_latitude') }}
+        {% endif %}
+      unit_of_measurement: "°"
+
+    - name: "NodeC Longitude"
+      state_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
+      value_template: >
+        {% if value_json.type == 'position' and value_json.from == 463840120 %}
+          {{ value_json.payload.longitude_i | float / 10000000 }}
+        {% else %}
+          {{ states('sensor.nodec_longitude') }}
+        {% endif %}
+      unit_of_measurement: "°"
+
+  device_tracker:
+    - name: "NodeC Bil"
+      state_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
+      json_attributes_topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
+      json_attributes_template: >
+        {% if value_json.type == 'position' and value_json.from == 463840120 %}
+          {{ {'latitude': value_json.payload.latitude_i / 10000000,
+              'longitude': value_json.payload.longitude_i / 10000000,
+              'gps_accuracy': 10} | tojson }}
+        {% else %}
+          {{ {} | tojson }}
+        {% endif %}
+
+automation:
+  - alias: "Opdater NodeC position"
+    trigger:
+      - trigger: mqtt
+        topic: "msh/EU_868/2/json/AllanMesh/!1ba2de60"
+    condition:
+      - condition: template
+        value_template: >
+          {{ trigger.payload_json.type == 'position'
+             and trigger.payload_json.from == 463840120 }}
+    action:
+      - action: device_tracker.see
+        data:
+          dev_id: nodec_bil
+          gps:
+            - "{{ trigger.payload_json.payload.latitude_i | float / 10000000 }}"
+            - "{{ trigger.payload_json.payload.longitude_i | float / 10000000 }}"
+          gps_accuracy: 10
+          source_type: gps
