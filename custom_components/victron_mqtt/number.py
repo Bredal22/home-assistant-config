@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Any
 
-from victron_mqtt import (
+from ._vendor.victron_mqtt import (
     Device as VictronVenusDevice,
     Metric as VictronVenusMetric,
     MetricKind,
@@ -29,9 +29,15 @@ METRIC_TYPE_TO_DEVICE_CLASS: dict[MetricType, NumberDeviceClass] = {
     MetricType.FREQUENCY: NumberDeviceClass.FREQUENCY,
     MetricType.ELECTRIC_STORAGE_PERCENTAGE: NumberDeviceClass.BATTERY,
     MetricType.TEMPERATURE: NumberDeviceClass.TEMPERATURE,
+    MetricType.HUMIDITY: NumberDeviceClass.HUMIDITY,
+    MetricType.PRESSURE: NumberDeviceClass.PRESSURE,
+    MetricType.DISTANCE: NumberDeviceClass.DISTANCE,
+    MetricType.POWER_FACTOR: NumberDeviceClass.POWER_FACTOR,
+    MetricType.COST: NumberDeviceClass.MONETARY,
     MetricType.SPEED: NumberDeviceClass.SPEED,
     MetricType.LIQUID_VOLUME: NumberDeviceClass.VOLUME_STORAGE,
     MetricType.DURATION: NumberDeviceClass.DURATION,
+    MetricType.IRRADIANCE: NumberDeviceClass.IRRADIANCE,
 }
 
 
@@ -87,8 +93,6 @@ class VictronNumber(VictronBaseEntity, NumberEntity):
             installation_id,
         )
         self._attr_device_class = METRIC_TYPE_TO_DEVICE_CLASS.get(metric.metric_type)
-        if self._attr_device_class is not None:
-            self._attr_native_unit_of_measurement = metric.unit_of_measurement
         self._attr_native_value = metric.value
         if metric.min_value is not None:
             self._attr_native_min_value = metric.min_value

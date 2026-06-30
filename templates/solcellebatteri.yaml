@@ -1,0 +1,24 @@
+- sensor:
+    - name: "Solcellebatteri ladetilstand"
+      unique_id: solcellebatteri_ladetilstand
+      unit_of_measurement: "%"
+      device_class: battery
+      state_class: measurement
+      availability: >
+        {{ states('sensor.solcellebatteri_hvilespaending') not in ['unknown','unavailable','none'] }}
+      state: >
+        {% set v = states('sensor.solcellebatteri_hvilespaending') | float(0) %}
+        {% set pts = [
+          [11.39,0],[11.51,10],[11.66,20],[11.81,30],[11.96,40],
+          [12.10,50],[12.24,60],[12.37,70],[12.50,80],[12.62,90],[12.73,100] ] %}
+        {% if v <= pts[0][0] %} 0
+        {% elif v >= pts[-1][0] %} 100
+        {% else %}
+          {% set ns = namespace(p=0) %}
+          {% for i in range((pts | length) - 1) %}
+            {% if pts[i][0] <= v and v < pts[i+1][0] %}
+              {% set ns.p = pts[i][1] + (v - pts[i][0]) / (pts[i+1][0] - pts[i][0]) * (pts[i+1][1] - pts[i][1]) %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.p | round(2) }}
+        {% endif %}

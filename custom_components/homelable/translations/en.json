@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Homelable",
+        "description": "Configure homelab network discovery and monitoring.",
+        "data": {
+          "scan_ranges": "Network ranges (CIDR, comma-separated)",
+          "scan_interval": "Scan interval (seconds)",
+          "status_interval": "Status check interval (seconds)",
+          "zigbee_base_topic": "Zigbee2MQTT base topic"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Homelable instance can be configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Homelable options",
+        "data": {
+          "scan_ranges": "Network ranges (CIDR, comma-separated)",
+          "scan_interval": "Scan interval (seconds)",
+          "status_interval": "Status check interval (seconds)",
+          "zigbee_base_topic": "Zigbee2MQTT base topic",
+          "service_check_enabled": "Enable per-service status checks",
+          "service_check_interval": "Service check interval (seconds)"
+        }
+      }
+    }
+  }
+}

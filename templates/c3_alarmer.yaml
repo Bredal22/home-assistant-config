@@ -1,0 +1,229 @@
+- sensor:
+    # --- C3: sensorer pr. indeks ---
+
+    # Alarm 0 - med selv-hold hvis data kortvarigt forsvinder
+    - name: "C3 alarm 0 titel"
+      unique_id: c3_alarm_0_title
+      icon: mdi:alarm-light
+      state: >-
+        {% set a = state_attr('sensor.c3_alarm_0', 'firstReportsWordingText') %}
+        {% if a not in [none, 'unknown', 'unavailable', ''] %}
+          {{ a }}
+        {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+          {{ this.state }}
+        {% else %}
+          Alarm #{{ states('sensor.c3_alarm_0') }}
+        {% endif %}
+
+    - name: "C3 alarm 0 adresse"
+      unique_id: c3_alarm_0_address
+      icon: mdi:map-marker
+      state: >-
+        {% set v = state_attr('sensor.c3_alarm_0', 'address') %}
+        {% if v not in [none, 'unknown', 'unavailable', ''] %}
+          {{ v }}
+        {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+          {{ this.state }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 0 stationer"
+      unique_id: c3_alarm_0_stations
+      icon: mdi:fire-station
+      state: >-
+        {% set v = state_attr('sensor.c3_alarm_0', 'stationNames') %}
+        {% if v not in [none, 'unknown', 'unavailable', ''] %}
+          {{ v }}
+        {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+          {{ this.state }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 0 køretøjer"
+      unique_id: c3_alarm_0_vehicles
+      icon: mdi:fire-truck
+      state: >-
+        {% set v = state_attr('sensor.c3_alarm_0', 'vehicleNames') %}
+        {% if v not in [none, 'unknown', 'unavailable', ''] %}
+          {{ v }}
+        {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+          {{ this.state }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 0 tidspunkt (lokal)"
+      unique_id: c3_alarm_0_time_local
+      icon: mdi:clock-outline
+      state: >-
+        {% set t = state_attr('sensor.c3_alarm_0', 'alarmTime') %}
+        {% if t not in [none, 'unknown', 'unavailable', ''] %}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+        {% elif this is defined and this.state not in ['unknown', 'unavailable', '—'] %}
+          {{ this.state }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 0 modtaget fra"
+      unique_id: c3_alarm_0_received_from
+      icon: mdi:phone-incoming
+      state: "{{ state_attr('sensor.c3_alarm_0','alarmReceivedFromText') or '—' }}"
+
+    # Alarm 1
+    - name: "C3 alarm 1 titel"
+      unique_id: c3_alarm_1_title
+      icon: mdi:alarm-light
+      state: >-
+        {% set a = state_attr('sensor.c3_alarm_1','firstReportsWordingText') %}
+        {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_1') }}{% endif %}
+
+    - name: "C3 alarm 1 adresse"
+      unique_id: c3_alarm_1_address
+      icon: mdi:map-marker
+      state: "{{ state_attr('sensor.c3_alarm_1','address') or '—' }}"
+
+    - name: "C3 alarm 1 stationer"
+      unique_id: c3_alarm_1_stations
+      icon: mdi:fire-station
+      state: "{{ state_attr('sensor.c3_alarm_1','stationNames') or '—' }}"
+
+    - name: "C3 alarm 1 køretøjer"
+      unique_id: c3_alarm_1_vehicles
+      icon: mdi:fire-truck
+      state: "{{ state_attr('sensor.c3_alarm_1','vehicleNames') or '—' }}"
+
+    - name: "C3 alarm 1 tidspunkt (lokal)"
+      unique_id: c3_alarm_1_time_local
+      icon: mdi:clock-outline
+      state: >-
+        {% set t = state_attr('sensor.c3_alarm_1','alarmTime') %}
+        {% if t %}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 1 modtaget fra"
+      unique_id: c3_alarm_1_received_from
+      icon: mdi:phone-incoming
+      state: "{{ state_attr('sensor.c3_alarm_1','alarmReceivedFromText') or '—' }}"
+
+    # Alarm 2
+    - name: "C3 alarm 2 titel"
+      unique_id: c3_alarm_2_title
+      icon: mdi:alarm-light
+      state: >-
+        {% set a = state_attr('sensor.c3_alarm_2','firstReportsWordingText') %}
+        {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_2') }}{% endif %}
+
+    - name: "C3 alarm 2 adresse"
+      unique_id: c3_alarm_2_address
+      icon: mdi:map-marker
+      state: "{{ state_attr('sensor.c3_alarm_2','address') or '—' }}"
+
+    - name: "C3 alarm 2 stationer"
+      unique_id: c3_alarm_2_stations
+      icon: mdi:fire-station
+      state: "{{ state_attr('sensor.c3_alarm_2','stationNames') or '—' }}"
+
+    - name: "C3 alarm 2 køretøjer"
+      unique_id: c3_alarm_2_vehicles
+      icon: mdi:fire-truck
+      state: "{{ state_attr('sensor.c3_alarm_2','vehicleNames') or '—' }}"
+
+    - name: "C3 alarm 2 tidspunkt (lokal)"
+      unique_id: c3_alarm_2_time_local
+      icon: mdi:clock-outline
+      state: >-
+        {% set t = state_attr('sensor.c3_alarm_2','alarmTime') %}
+        {% if t %}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 2 modtaget fra"
+      unique_id: c3_alarm_2_received_from
+      icon: mdi:phone-incoming
+      state: "{{ state_attr('sensor.c3_alarm_2','alarmReceivedFromText') or '—' }}"
+
+    # Alarm 3
+    - name: "C3 alarm 3 titel"
+      unique_id: c3_alarm_3_title
+      icon: mdi:alarm-light
+      state: >-
+        {% set a = state_attr('sensor.c3_alarm_3','firstReportsWordingText') %}
+        {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_3') }}{% endif %}
+
+    - name: "C3 alarm 3 adresse"
+      unique_id: c3_alarm_3_address
+      icon: mdi:map-marker
+      state: "{{ state_attr('sensor.c3_alarm_3','address') or '—' }}"
+
+    - name: "C3 alarm 3 stationer"
+      unique_id: c3_alarm_3_stations
+      icon: mdi:fire-station
+      state: "{{ state_attr('sensor.c3_alarm_3','stationNames') or '—' }}"
+
+    - name: "C3 alarm 3 køretøjer"
+      unique_id: c3_alarm_3_vehicles
+      icon: mdi:fire-truck
+      state: "{{ state_attr('sensor.c3_alarm_3','vehicleNames') or '—' }}"
+
+    - name: "C3 alarm 3 tidspunkt"
+      unique_id: c3_alarm_3_time_local
+      icon: mdi:clock-outline
+      state: >-
+        {% set t = state_attr('sensor.c3_alarm_3','alarmTime') %}
+        {% if t %}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 3 modtaget fra"
+      unique_id: c3_alarm_3_received_from
+      icon: mdi:phone-incoming
+      state: "{{ state_attr('sensor.c3_alarm_3','alarmReceivedFromText') or '—' }}"
+
+    # Alarm 4
+    - name: "C3 alarm 4 titel"
+      unique_id: c3_alarm_4_title
+      icon: mdi:alarm-light
+      state: >-
+        {% set a = state_attr('sensor.c3_alarm_4','firstReportsWordingText') %}
+        {% if a %}{{ a }}{% else %}Alarm #{{ states('sensor.c3_alarm_4') }}{% endif %}
+
+    - name: "C3 alarm 4 adresse"
+      unique_id: c3_alarm_4_address
+      icon: mdi:map-marker
+      state: "{{ state_attr('sensor.c3_alarm_4','address') or '—' }}"
+
+    - name: "C3 alarm 4 stationer"
+      unique_id: c3_alarm_4_stations
+      icon: mdi:fire-station
+      state: "{{ state_attr('sensor.c3_alarm_4','stationNames') or '—' }}"
+
+    - name: "C3 alarm 4 køretøjer"
+      unique_id: c3_alarm_4_vehicles
+      icon: mdi:fire-truck
+      state: "{{ state_attr('sensor.c3_alarm_4','vehicleNames') or '—' }}"
+
+    - name: "C3 alarm 4 tidspunkt"
+      unique_id: c3_alarm_4_time_local
+      icon: mdi:clock-outline
+      state: >-
+        {% set t = state_attr('sensor.c3_alarm_4','alarmTime') %}
+        {% if t %}
+          {{ as_timestamp(t) | timestamp_custom("%Y-%m-%d %H:%M:%S", true) }}
+        {% else %}
+          —
+        {% endif %}
+
+    - name: "C3 alarm 4 modtaget fra"
+      unique_id: c3_alarm_4_received_from
+      icon: mdi:phone-incoming
+      state: "{{ state_attr('sensor.c3_alarm_4','alarmReceivedFromText') or '—' }}"
