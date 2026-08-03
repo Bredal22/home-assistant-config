@@ -52,11 +52,12 @@ class Device:
         self._device_type = parsed_topic.device_type
         self._device_id = parsed_topic.device_id
         self._installation_id = parsed_topic.installation_id
-        self._model = None
-        self._manufacturer = None
-        self._serial_number = None
-        self._firmware_version = None
-        self._custom_name = None
+        self._model: str | None = None
+        self._manufacturer: str | None = None
+        self._serial_number: str | None = None
+        self._firmware_version: str | None = None
+        self._custom_name: str | None = None
+        self._productid: int | None = None
         self._parent_device: Device | None = parent_device
 
         _LOGGER.debug(
@@ -90,12 +91,15 @@ class Device:
         if value is None:
             _LOGGER.debug("Ignoring empty/None payload for device %s property %s", self.unique_id, short_id)
             return
+
+        if short_id == "victron_productid":
+            assert isinstance(value, int), f"ProductId must be an int, got {value!r}"
+            self._productid = value
+            return
+
         value = str(value)
 
         _LOGGER.debug("Setting device %s property %s = %s", self.unique_id, short_id, value)
-
-        if short_id == "victron_productid":
-            return  # ignore for now
 
         if short_id == "model":
             self._model = value
@@ -128,15 +132,17 @@ class Device:
 
         parsed_topic.finalize_topic_fields(topic_desc, device_unique_id=self._unique_id)
         if fallback_to_metric_topic:
-            value = unwrap_bool(payload)
-            if value is None:
+            fallback_value = unwrap_bool(payload)
+            if fallback_value is None:
                 log_debug(
                     "Ignoring null fallback_to_metric_topic value for device %s metric %s",
                     self.unique_id,
                     topic_desc.short_id,
                 )
                 return None
-            return FallbackPlaceholder(device=self, parsed_topic=parsed_topic, topic_descriptor=topic_desc, value=value)
+            return FallbackPlaceholder(
+                device=self, parsed_topic=parsed_topic, topic_descriptor=topic_desc, value=fallback_value
+            )
         value = Device._unwrap_payload(topic_desc, payload)
         if value is None:
             log_debug("Ignoring null topic value for device %s metric %s", self.unique_id, topic_desc.short_id)
@@ -154,6 +160,7 @@ class Device:
         assert topic_desc.value_type is not None
         unwrapper = VALUE_TYPE_UNWRAPPER[topic_desc.value_type]
         if unwrapper in [unwrap_enum, unwrap_bitmask]:
+            assert topic_desc.enum is not None, f"enum must be set for topic: {topic_desc.topic}"
             return unwrapper(payload, topic_desc.enum)
         if unwrapper in [
             unwrap_float,
@@ -245,6 +252,7 @@ class Device:
         )
         assert metric_placeholder.parsed_topic.device_type is not None, "device_type must be set for metric"
 
+        metric: Metric
         if new_topic_desc.message_type in [
             MetricKind.SWITCH,
             MetricKind.NUMBER,
@@ -258,7 +266,6 @@ class Device:
                 name=name,
                 descriptor=new_topic_desc,
                 unique_id=metric_placeholder.parsed_topic.unique_id,
-                display_id=metric_placeholder.parsed_topic.display_id,
                 short_id=metric_placeholder.parsed_topic.short_id,
                 key_values=metric_placeholder.parsed_topic.key_values,
                 topic=metric_placeholder.parsed_topic.full_topic,
@@ -270,7 +277,6 @@ class Device:
                 name=name,
                 descriptor=new_topic_desc,
                 unique_id=metric_placeholder.parsed_topic.unique_id,
-                display_id=metric_placeholder.parsed_topic.display_id,
                 short_id=metric_placeholder.parsed_topic.short_id,
                 key_values=metric_placeholder.parsed_topic.key_values,
                 hub=hub,
@@ -284,6 +290,7 @@ class Device:
         name = ParsedTopic.replace_ids(topic_desc.name, key_values)
         short_id = ParsedTopic.replace_ids(topic_desc.short_id, key_values)
         unique_id = ParsedTopic.make_unique_id(self.unique_id, short_id)
+        metric: FormulaMetric
         if topic_desc.message_type in [
             MetricKind.SWITCH,
             MetricKind.NUMBER,
@@ -355,6 +362,11 @@ class Device:
     def serial_number(self) -> str | None:
         """Return the serial number of the device."""
         return self._serial_number
+
+    @property
+    def product_id(self) -> int | None:
+        """Return the Victron product ID of the device, if known."""
+        return self._productid
 
     @property
     def device_type(self) -> DeviceType:

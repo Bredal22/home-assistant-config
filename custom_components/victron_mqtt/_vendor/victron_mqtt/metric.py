@@ -10,7 +10,14 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from .constants import MetricKind, MetricNature, MetricType, VictronEnum  # noqa: TC001
+from .constants import (
+    AUTO_UPDATE_INTERVAL_DEFAULT,
+    AUTO_UPDATE_INTERVALS,
+    MetricKind,
+    MetricNature,
+    MetricType,
+    VictronEnum,
+)
 from .data_classes import ParsedTopic, TopicDescriptor
 from .id_utils import replace_complex_ids
 
@@ -36,7 +43,6 @@ class Metric:
         name: str | None = None,
         descriptor: TopicDescriptor | None = None,
         unique_id: str | None = None,
-        display_id: str | None = None,
         short_id: str | None = None,
         key_values: dict[str, str] | None = None,
         hub: Hub | None = None,
@@ -59,7 +65,6 @@ class Metric:
         self._device: Device = device
         self._descriptor: TopicDescriptor = descriptor
         self._unique_id: str = unique_id
-        self._display_id: str = display_id if display_id is not None else unique_id
         self._value: Any = None
         self._short_id: str = short_id
         self._name: str = name
@@ -71,6 +76,14 @@ class Metric:
         self._last_seen: float = 0
         self._generic_short_id = self._descriptor.short_id
         self._generic_name = self._descriptor.generic_name
+        frequency = hub._update_frequency_seconds
+        if isinstance(frequency, str):
+            # The only string values Hub accepts are the auto profiles.
+            self._update_interval_seconds: int | None = AUTO_UPDATE_INTERVALS[frequency].get(
+                descriptor.metric_type, AUTO_UPDATE_INTERVAL_DEFAULT
+            )
+        else:
+            self._update_interval_seconds = frequency
 
         _LOGGER.debug("Metric %s initialized", repr(self))
 
@@ -200,17 +213,6 @@ class Metric:
         return self._unique_id
 
     @property
-    def display_id(self) -> str:
-        """Return the display identifier with the device-type prefix de-duplicated.
-
-        Equal to ``unique_id`` for most metrics.  Where ``short_id`` starts with
-        the device-type prefix, the redundant copy is stripped, giving a cleaner
-        identifier.  See :attr:`ParsedTopic.display_id` for details.
-        The ``unique_id`` is never modified.
-        """
-        return self._display_id
-
-    @property
     def key_values(self) -> dict[str, str]:
         """Return the key_values dictionary as read-only."""
         return self._key_values
@@ -219,6 +221,11 @@ class Metric:
     def enum_values(self) -> list[str] | None:
         """Get the enum string values for this metric, if defined."""
         return [e.id for e in self._descriptor.enum] if self._descriptor.enum else None
+
+    @property
+    def update_interval_seconds(self) -> int | None:
+        """Effective update interval for this metric, resolved once from the hub setting."""
+        return self._update_interval_seconds
 
     @property
     def on_update(self) -> CallbackOnUpdate | None:
@@ -230,12 +237,34 @@ class Metric:
         """Sets the on_update callback."""
         self._on_update = value
 
-    def _keepalive(self, force_invalidate: bool, log_debug: Callable[..., None]):
-        """Reset metrics value if no updates or send last values if they got skipped"""
+    def _keepalive(
+        self,
+        force_invalidate: bool,
+        log_debug: Callable[..., None],
+        stale_timeout: float | None = None,
+    ):
+        """Reset metrics value if no updates or send last values if they got skipped.
+
+        stale_timeout, when provided, is a number of seconds: if the metric has not been seen
+        for longer than that, its source is considered to have stopped publishing and the
+        metric is reset to None (unavailable). This relies on the hub periodically forcing a
+        full republish, so the timeout must be larger than that republish interval.
+        """
         if force_invalidate and self._value is not None:
             log_debug("Metric %s is being forced reset", self.unique_id)
             self._handle_message(None, log_debug, update_last_seen=False)  # Dont update the last_seen as it wasnt seen
             return
+        if stale_timeout is not None and self._value is not None:
+            elapsed = time.monotonic() - self._last_seen
+            if elapsed > stale_timeout:
+                log_debug(
+                    "Metric %s has been silent for %.2fs (> %.2fs), resetting to unavailable",
+                    self.unique_id,
+                    elapsed,
+                    stale_timeout,
+                )
+                self._handle_message(None, log_debug, update_last_seen=False)  # Dont update last_seen as it wasnt seen
+                return
         if self._last_seen > self._last_notified:
             log_debug(
                 "Metric %s has been updated at %.2f but not published since %.2fs, re-publishing",
@@ -259,10 +288,11 @@ class Metric:
         if update_last_seen:
             self._last_seen = now
         should_notify = False
+        update_interval = self._update_interval_seconds
 
         # In case of zero update frequency, always consider changed when MQTT message is received
         # also if this is the first time the metric is being notified
-        if force or self._hub._update_frequency_seconds == 0 or self._last_notified == 0:
+        if force or update_interval == 0 or self._last_notified == 0:
             should_notify = True
             force = True
         elif value != self._value:
@@ -286,17 +316,17 @@ class Metric:
         # In case of non-zero update frequency, respect the update frequency limit only for numerical values
         if (
             not force
-            and self._hub._update_frequency_seconds is not None
+            and update_interval is not None
             and isinstance(value, float | int)
             and not isinstance(value, bool)  # bool is a subclass of int, but we only want real numeric sensor values.
         ):
             elapsed = now - self._last_notified
-            if elapsed < self._hub._update_frequency_seconds:
+            if elapsed < update_interval:
                 _LOGGER.debug(
                     "Update for %s skipped due to frequency limit (%.2fs < %ds)",
                     self.unique_id,
                     elapsed,
-                    self._hub._update_frequency_seconds,
+                    update_interval,
                 )
                 should_notify = False
             else:
@@ -308,8 +338,11 @@ class Metric:
             try:
                 # If the event loop is running, schedule the callback
                 self._hub._loop.call_soon_threadsafe(self._on_update, self, self.value)
+            except RuntimeError as exc:
+                # The loop can close between the is_running() check above and this call during shutdown
+                _LOGGER.debug("Skipping on_update callback for %s: %s", self.unique_id, exc)
             except Exception as exc:
-                log_debug("Error calling callback %s", exc, exc_info=True)
+                _LOGGER.exception("Error scheduling on_update callback for %s: %s", self.unique_id, exc)
 
         for dependency in self._depend_on_me:
             assert self != dependency, f"Circular dependency detected: {self}"

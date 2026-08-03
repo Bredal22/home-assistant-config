@@ -9,6 +9,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import HomelableCoordinator
+from .media import async_register_media
 from .panel import async_register_panel, async_unregister_panel
 from .websocket import async_register_websocket_commands
 
@@ -32,6 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async_register_websocket_commands(hass)
     await async_register_panel(hass)
+    await async_register_media(hass)
 
     if PLATFORMS:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -41,6 +43,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # latest setting.
     coordinator.async_start_service_checks()
     entry.async_on_unload(coordinator.async_stop_service_checks)
+
+    # Optional Proxmox auto-sync: re-imports the inventory into pending on the
+    # configured interval. Reload on options change recreates the coordinator,
+    # so enable/interval are always picked up fresh.
+    coordinator.async_start_proxmox_sync()
+    entry.async_on_unload(coordinator.async_stop_proxmox_sync)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

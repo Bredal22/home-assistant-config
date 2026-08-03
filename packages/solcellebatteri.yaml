@@ -1,5 +1,5 @@
 sensor:
-  # Nedsamplet kopi: ét punkt i minuttet
+  # Nedsamplet: ét punkt i minuttet
   - platform: filter
     name: "Solcellebatteri spænding filtreret"
     entity_id: sensor.victron_smartsolar_mppt_battery_voltage

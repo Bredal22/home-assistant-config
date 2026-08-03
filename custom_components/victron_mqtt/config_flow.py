@@ -46,12 +46,16 @@ from .const import (
     CONF_ROOT_TOPIC_PREFIX,
     CONF_SERIAL,
     CONF_SIMPLE_NAMING,
+    CONF_UPDATE_FREQUENCY_MODE,
     CONF_UPDATE_FREQUENCY_SECONDS,
     DEFAULT_HOST,
     DEFAULT_PORT,
     DEFAULT_SIMPLE_NAMING,
+    DEFAULT_UPDATE_FREQUENCY_MODE,
     DEFAULT_UPDATE_FREQUENCY_SECONDS,
     DOMAIN,
+    UPDATE_FREQUENCY_MODE_AUTO,
+    UPDATE_FREQUENCY_MODE_MANUAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,9 +63,29 @@ _LOGGER = logging.getLogger(__name__)
 TO_REDACT = {CONF_USERNAME, CONF_PASSWORD}
 
 ENTRY_TITLE_FORMAT = "Victron OS {installation_id} ({host}:{port})"
+DEFAULT_SSL_PORT = 8883
+
+
+def build_title(
+    installation_id: str,
+    host: str,
+    port: int,
+    friendly_name: str | None = None,
+) -> str:
+    """Build the title for a config entry."""
+    return friendly_name or ENTRY_TITLE_FORMAT.format(
+        installation_id=installation_id,
+        host=host,
+        port=port,
+    )
+
+
+def default_port_for(use_ssl: bool) -> int:
+    """Return default MQTT port based on transport."""
+    return DEFAULT_SSL_PORT if use_ssl else DEFAULT_PORT
 
 DEVICE_CODES: Sequence[SelectOptionDict] = [
-    {"value": device_type.code, "label": device_type.string}
+    {"value": str(device_type.code), "label": device_type.string}
     for device_type in DeviceType
     if device_type.string != "<Not used>"
 ]
@@ -93,6 +117,23 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         ),
         vol.Optional(CONF_SIMPLE_NAMING, default=DEFAULT_SIMPLE_NAMING): bool,
          vol.Optional(CONF_ROOT_TOPIC_PREFIX): str,
+        vol.Required(
+            CONF_UPDATE_FREQUENCY_MODE, default=DEFAULT_UPDATE_FREQUENCY_MODE
+        ): SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    SelectOptionDict(
+                        value=UPDATE_FREQUENCY_MODE_AUTO,
+                        label="Auto (library decides per metric, recommended)",
+                    ),
+                    SelectOptionDict(
+                        value=UPDATE_FREQUENCY_MODE_MANUAL,
+                        label="Manual (fixed interval below)",
+                    ),
+                ],
+                mode=SelectSelectorMode.LIST,
+            )
+        ),
         vol.Optional(CONF_UPDATE_FREQUENCY_SECONDS, default=DEFAULT_UPDATE_FREQUENCY_SECONDS): int,
         vol.Optional(CONF_EXCLUDED_DEVICES, default=[]): SelectSelector(
             SelectSelectorConfig(
@@ -102,6 +143,14 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
             )
         ),
         vol.Optional(CONF_ELEVATED_TRACING): str,
+    }
+)
+
+STEP_SSDP_AUTH_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_USERNAME, default=""): str,
+        vol.Optional(CONF_PASSWORD, default=""): str,
+        vol.Optional(CONF_SSL, default=False): bool,
     }
 )
 
@@ -142,7 +191,7 @@ async def validate_input(data: dict[str, Any]) -> str:
 class VictronMQTTConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for victronvenus."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         """Initialize."""
@@ -185,11 +234,7 @@ class VictronMQTTConfigFlow(ConfigFlow, domain=DOMAIN):
 
                 self._abort_if_unique_id_configured()
 
-                title = ENTRY_TITLE_FORMAT.format(
-                    installation_id=installation_id,
-                    host=data[CONF_HOST],
-                    port=data[CONF_PORT],
-                )
+                title = build_title(installation_id, data[CONF_HOST], data[CONF_PORT])
                 return self.async_create_entry(title=title, data=data)
 
         if len(errors) > 0:
@@ -294,33 +339,123 @@ class VictronMQTTConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(self.installation_id)
         self._abort_if_unique_id_configured()
 
-        try:
-            sensed_installation_id = await validate_input(
-                {
-                    CONF_HOST: self.hostname,
-                    CONF_SERIAL: self.serial,
-                    CONF_INSTALLATION_ID: self.installation_id,
-                }
+        assert self.installation_id is not None
+        self.context["title_placeholders"] = {
+            "name": build_title(
+                self.installation_id,
+                self.hostname,
+                DEFAULT_PORT,
+                self.friendly_name,
             )
-            assert sensed_installation_id == self.installation_id
-        except AuthenticationError:
-            return self.async_abort(reason="invalid_auth")
-        except CannotConnectError:
-            return self.async_abort(reason="cannot_connect")
+        }
 
-        return self.async_create_entry(
-            title=ENTRY_TITLE_FORMAT.format(
-                    installation_id=self.installation_id,
-                    host=self.hostname,
-                    port=DEFAULT_PORT,
-                ),
-            data={
+        return await self.async_step_ssdp_confirm()
+
+    async def async_step_ssdp_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm SSDP discovered device."""
+        assert self.hostname is not None
+        assert self.installation_id is not None
+
+        if user_input is not None:
+            data: dict[str, Any] = {
                 CONF_HOST: self.hostname,
+                CONF_PORT: DEFAULT_PORT,
                 CONF_SERIAL: self.serial,
                 CONF_INSTALLATION_ID: self.installation_id,
                 CONF_MODEL: self.model_name,
+                CONF_SSL: False,
                 CONF_SIMPLE_NAMING: DEFAULT_SIMPLE_NAMING,
+            }
+            try:
+                await validate_input(data)
+            except AuthenticationError:
+                return await self.async_step_ssdp_auth()
+            except CannotConnectError:
+                return self.async_abort(reason="cannot_connect")
+            except Exception:
+                _LOGGER.exception(
+                    "Unexpected error validating SSDP discovery for Victron MQTT"
+                )
+                return self.async_abort(reason="unknown")
+
+            return self.async_create_entry(
+                title=build_title(
+                    self.installation_id,
+                    self.hostname,
+                    DEFAULT_PORT,
+                    self.friendly_name,
+                ),
+                data=data,
+            )
+
+        self._set_confirm_only()
+        return self.async_show_form(
+            step_id="ssdp_confirm",
+            description_placeholders={
+                "name": build_title(
+                    self.installation_id,
+                    self.hostname,
+                    DEFAULT_PORT,
+                    self.friendly_name,
+                )
             },
+        )
+
+    async def async_step_ssdp_auth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle SSDP auth when credentials are required."""
+        assert self.hostname is not None
+        assert self.installation_id is not None
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            _LOGGER.info(
+                "SSDP auth user input received: %s",
+                async_redact_data(user_input, TO_REDACT),
+            )
+            data: dict[str, Any] = {
+                CONF_HOST: self.hostname,
+                CONF_PORT: default_port_for(user_input.get(CONF_SSL, False)),
+                CONF_SERIAL: self.serial,
+                CONF_INSTALLATION_ID: self.installation_id,
+                CONF_MODEL: self.model_name,
+                CONF_USERNAME: user_input.get(CONF_USERNAME) or None,
+                CONF_PASSWORD: user_input.get(CONF_PASSWORD) or None,
+                CONF_SSL: user_input.get(CONF_SSL, False),
+                CONF_SIMPLE_NAMING: DEFAULT_SIMPLE_NAMING,
+            }
+
+            try:
+                await validate_input(data)
+            except AuthenticationError:
+                errors["base"] = "invalid_auth"
+            except CannotConnectError:
+                errors["base"] = "cannot_connect"
+            except Exception:
+                _LOGGER.exception("Unexpected error during SSDP setup")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(
+                    title=build_title(
+                        self.installation_id,
+                        self.hostname,
+                        data[CONF_PORT],
+                        self.friendly_name,
+                    ),
+                    data=data,
+                )
+
+        return self.async_show_form(
+            step_id="ssdp_auth",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_SSDP_AUTH_DATA_SCHEMA, user_input
+            ),
+            errors=errors,
+            description_placeholders={CONF_HOST: self.hostname},
         )
 
 

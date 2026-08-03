@@ -1,8 +1,9 @@
 """Functions to unwrap the data from the JSON string."""
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
+from typing import Any
 
 from .constants import BITMASK_SEPARATOR, ValueType, VictronEnum
 
@@ -94,9 +95,9 @@ def unwrap_enum(json_str: str, enum: type[VictronEnum]) -> VictronEnum | None:
     """Unwrap a string value from a JSON string."""
     try:
         data = json.loads(json_str)
+        val = data["value"]
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return None
-    val = data["value"]
     return enum.from_code(val) if val is not None else None
 
 
@@ -104,12 +105,12 @@ def unwrap_bitmask(json_str: str, enum: type[VictronEnum]) -> str | None:
     """Unwrap a bitmask value from a JSON string."""
     try:
         data = json.loads(json_str)
+        val = data["value"]
+        if val is None:
+            return None
+        vals = [2**idx for idx, bit in enumerate(bin(val)[:1:-1]) if int(bit)] if int(val) > 0 else [0]
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return None
-    val = data["value"]
-    if val is None:
-        return None
-    vals = [2**idx for idx, bit in enumerate(bin(val)[:1:-1]) if int(bit)] if int(val) > 0 else [0]
     enums = [enum.from_code(v) for v in vals]
     return str.join(BITMASK_SEPARATOR, [e.string for e in enums if e is not None])
 
@@ -124,6 +125,17 @@ def unwrap_epoch(json_str: str) -> datetime | None:
         return datetime.fromtimestamp(value, tz=UTC)
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return None
+
+
+def unwrap_epoch_default_na(json_str: str) -> datetime | str:
+    """Unwrap an integer value from a JSON string, defaulting to 0."""
+    try:
+        data = json.loads(json_str)
+        if data["value"] is None:
+            return "N/A"
+        return datetime.fromtimestamp(data["value"], tz=UTC)
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+        return "N/A"
 
 
 def wrap_enum(enum_val: VictronEnum | str, enum_expected: type[VictronEnum]) -> str:
@@ -188,7 +200,7 @@ def wrap_epoch(value: datetime | None) -> str:
     return json.dumps({"value": datetime.timestamp(value)})
 
 
-VALUE_TYPE_UNWRAPPER = {
+VALUE_TYPE_UNWRAPPER: dict[ValueType, Callable[..., Any]] = {
     ValueType.INT: unwrap_int,
     ValueType.INT_DEFAULT_0: unwrap_int_default_0,
     ValueType.FLOAT: unwrap_float,
@@ -196,12 +208,13 @@ VALUE_TYPE_UNWRAPPER = {
     ValueType.ENUM: unwrap_enum,
     ValueType.BITMASK: unwrap_bitmask,
     ValueType.EPOCH: unwrap_epoch,
+    ValueType.EPOCH_DEFAULT_NA: unwrap_epoch_default_na,
     ValueType.INT_SECONDS_TO_HOURS: unwrap_int_seconds_to_hours,
     ValueType.INT_SECONDS_TO_MINUTES: unwrap_int_seconds_to_minutes,
     ValueType.FLOAT_M3_TO_LITERS: unwrap_float_m3_to_liters,
 }
 
-VALUE_TYPE_WRAPPER = {
+VALUE_TYPE_WRAPPER: dict[ValueType, Callable[..., str]] = {
     ValueType.INT: wrap_int,
     ValueType.INT_DEFAULT_0: wrap_int_default_0,
     ValueType.FLOAT: wrap_float,

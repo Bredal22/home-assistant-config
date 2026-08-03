@@ -8,8 +8,11 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
+from . import proxmox, scanner
 from .const import DOMAIN, SCAN_SIGNAL, SERVICE_STATUS_SIGNAL
+from .media import delete_media
 from .zigbee import ZigbeeMqttNotReadyError
+from .zwave import ZwaveMqttNotReadyError
 
 
 @callback
@@ -19,8 +22,10 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_save_canvas)
     websocket_api.async_register_command(hass, ws_designs_list)
     websocket_api.async_register_command(hass, ws_designs_create)
+    websocket_api.async_register_command(hass, ws_designs_copy)
     websocket_api.async_register_command(hass, ws_designs_update)
     websocket_api.async_register_command(hass, ws_designs_delete)
+    websocket_api.async_register_command(hass, ws_media_delete)
     websocket_api.async_register_command(hass, ws_scan_start)
     websocket_api.async_register_command(hass, ws_scan_cancel)
     websocket_api.async_register_command(hass, ws_scan_pending)
@@ -40,6 +45,12 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_scan_restore_batch)
     websocket_api.async_register_command(hass, ws_zigbee_devices)
     websocket_api.async_register_command(hass, ws_zigbee_import)
+    websocket_api.async_register_command(hass, ws_zwave_devices)
+    websocket_api.async_register_command(hass, ws_zwave_import)
+    websocket_api.async_register_command(hass, ws_proxmox_get_config)
+    websocket_api.async_register_command(hass, ws_proxmox_test_connection)
+    websocket_api.async_register_command(hass, ws_proxmox_import)
+    websocket_api.async_register_command(hass, ws_proxmox_import_pending)
 
 
 def _coordinator(hass: HomeAssistant):
@@ -142,6 +153,30 @@ async def ws_designs_create(
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): "homelable/designs/copy",
+        vol.Required("source_id"): str,
+        vol.Required("name"): str,
+        vol.Optional("icon", default="dashboard"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_designs_copy(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    coord = _coordinator(hass)
+    if coord is None:
+        _send_not_setup(connection, msg["id"])
+        return
+    design = await coord.copy_design(msg["source_id"], msg["name"], msg["icon"])
+    if design is None:
+        connection.send_error(msg["id"], "not_found", "Source design not found")
+        return
+    connection.send_result(msg["id"], design)
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): "homelable/designs/update",
         vol.Required("design_id"): str,
         vol.Optional("name"): str,
@@ -193,9 +228,35 @@ async def ws_designs_delete(
     connection.send_result(msg["id"], {"ok": True})
 
 
+# ─── Media ────────────────────────────────────────────────────────────────────
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homelable/media/delete",
+        vol.Required("filename"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_media_delete(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Delete an uploaded media file (e.g. a replaced floor plan)."""
+    removed = await hass.async_add_executor_job(delete_media, hass, msg["filename"])
+    connection.send_result(msg["id"], {"ok": removed})
+
+
 # ─── Scan ────────────────────────────────────────────────────────────────────
 
-@websocket_api.websocket_command({vol.Required("type"): "homelable/scan/start"})
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homelable/scan/start",
+        # Deep-scan overrides (per-scan only; not persisted).
+        vol.Optional("http_ranges"): [str],
+        vol.Optional("http_probe_enabled"): bool,
+        vol.Optional("verify_tls"): bool,
+    }
+)
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_scan_start(
@@ -205,7 +266,19 @@ async def ws_scan_start(
     if coord is None:
         _send_not_setup(connection, msg["id"])
         return
-    result = await coord.trigger_scan()
+    http_ranges = msg.get("http_ranges")
+    if http_ranges:
+        invalid = [r for r in http_ranges if not scanner._valid_port_range(r.strip())]
+        if invalid:
+            connection.send_error(
+                msg["id"], "invalid_port_range", f"Invalid port range(s): {invalid}"
+            )
+            return
+    result = await coord.trigger_scan(
+        http_ranges=http_ranges,
+        http_probe_enabled=bool(msg.get("http_probe_enabled", False)),
+        verify_tls=bool(msg.get("verify_tls", False)),
+    )
     connection.send_result(msg["id"], result)
 
 
@@ -227,7 +300,7 @@ async def ws_scan_cancel(
     {
         vol.Required("type"): "homelable/scan/pending",
         vol.Optional("status", default="pending"): vol.In(["pending", "hidden"]),
-        vol.Optional("source"): vol.In(["scan", "zigbee"]),
+        vol.Optional("source"): vol.In(["scan", "zigbee", "zwave"]),
     }
 )
 @websocket_api.async_response
@@ -264,10 +337,17 @@ async def ws_scan_approve(
     if node is None:
         connection.send_error(msg["id"], "not_found", "Device not found")
         return
-    auto_edge = await coord._create_zigbee_parent_edge(
+    # A same-design duplicate isn't placed automatically: return the conflict so
+    # the panel can ask (go to existing / add duplicate anyway). WS send_error
+    # can't carry a structured body, so this rides a normal result instead.
+    if "duplicate" in node:
+        connection.send_result(msg["id"], {"duplicate": node["duplicate"]})
+        return
+    auto_edge = await coord._create_wireless_parent_edge(
         node, overrides.get("design_id")
     )
     edges = [auto_edge] if auto_edge else []
+    edges.extend(await coord._create_proxmox_edges(node, overrides.get("design_id")))
     connection.send_result(
         msg["id"],
         {
@@ -451,35 +531,8 @@ async def ws_scan_approve_batch(
         _send_not_setup(connection, msg["id"])
         return
     overrides = _overrides_with_design(msg)
-    design_id = overrides.get("design_id")
-    nodes: list[dict[str, Any]] = []
-    device_ids: list[str] = []
-    node_ids: list[str] = []
-    edges: list[dict[str, Any]] = []
-    not_found: list[str] = []
-    for device_id in msg["device_ids"]:
-        node = await coord.approve_pending(device_id, overrides)
-        if node is None:
-            not_found.append(device_id)
-            continue
-        nodes.append(node)
-        device_ids.append(device_id)
-        node_ids.append(node["id"])
-        auto_edge = await coord._create_zigbee_parent_edge(node, design_id)
-        if auto_edge:
-            edges.append(auto_edge)
-    connection.send_result(
-        msg["id"],
-        {
-            "approved": len(nodes),
-            "nodes": nodes,
-            "device_ids": device_ids,
-            "node_ids": node_ids,
-            "edges": edges,
-            "edges_created": len(edges),
-            "not_found": not_found,
-        },
-    )
+    result = await coord.approve_batch(msg["device_ids"], overrides)
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(
@@ -607,20 +660,216 @@ async def ws_zigbee_devices(
 
 
 @websocket_api.websocket_command(
-    {
-        vol.Required("type"): "homelable/zigbee/import",
-        vol.Required("devices"): [dict],
-    }
+    {vol.Required("type"): "homelable/zigbee/import"}
 )
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_zigbee_import(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Push selected Z2M devices into the pending devices store."""
+    """Kick off a background Zigbee import (fetch + import); surfaces under
+    Scan History with a running → done transition."""
     coord = _coordinator(hass)
     if coord is None:
         _send_not_setup(connection, msg["id"])
         return
-    result = await coord.import_zigbee_devices(msg["devices"])
+    result = await coord.trigger_zigbee_import()
+    connection.send_result(msg["id"], result)
+
+
+# ─── Z-Wave JS UI ─────────────────────────────────────────────────────────────
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homelable/zwave/devices"}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_zwave_devices(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Fetch the Z-Wave node list and return parsed nodes + edges."""
+    coord = _coordinator(hass)
+    if coord is None:
+        _send_not_setup(connection, msg["id"])
+        return
+    try:
+        nodes, edges = await coord.fetch_zwave_network()
+    except ZwaveMqttNotReadyError as exc:
+        connection.send_error(msg["id"], "mqtt_not_configured", str(exc))
+        return
+    except TimeoutError as exc:
+        connection.send_error(msg["id"], "timeout", str(exc))
+        return
+    except ValueError as exc:
+        connection.send_error(msg["id"], "bad_response", str(exc))
+        return
+    prefix, gateway = coord.get_zwave_config()
+    connection.send_result(
+        msg["id"],
+        {"nodes": nodes, "edges": edges, "prefix": prefix, "gateway": gateway},
+    )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homelable/zwave/import"}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_zwave_import(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Kick off a background Z-Wave import (fetch + import); surfaces under
+    Scan History with a running → done transition."""
+    coord = _coordinator(hass)
+    if coord is None:
+        _send_not_setup(connection, msg["id"])
+        return
+    result = await coord.trigger_zwave_import()
+    connection.send_result(msg["id"], result)
+
+
+# ─── Proxmox VE ───────────────────────────────────────────────────────────────
+
+# Connection params are all optional on the wire: a blank value falls back to
+# the integration-stored config (host/port/tls) and credential (token), so the
+# panel never has to hold the token to run an import.
+_PROXMOX_CONN_SCHEMA = {
+    vol.Optional("host"): vol.Any(str, None),
+    vol.Optional("port"): vol.Any(int, None),
+    vol.Optional("token_id"): vol.Any(str, None),
+    vol.Optional("token_secret"): vol.Any(str, None),
+    vol.Optional("verify_tls"): vol.Any(bool, None),
+}
+
+
+def _proxmox_request(coord, msg: dict[str, Any]) -> dict[str, Any]:
+    """Resolve request connection params over the stored config."""
+    return coord.resolve_proxmox_request(
+        host=msg.get("host"),
+        port=msg.get("port"),
+        token_id=msg.get("token_id"),
+        token_secret=msg.get("token_secret"),
+        verify_tls=msg.get("verify_tls"),
+    )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homelable/proxmox/get_config"}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_proxmox_get_config(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Return non-secret Proxmox config (host/port/tls/sync + token_configured)."""
+    coord = _coordinator(hass)
+    if coord is None:
+        _send_not_setup(connection, msg["id"])
+        return
+    connection.send_result(msg["id"], coord.get_proxmox_config())
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homelable/proxmox/test_connection", **_PROXMOX_CONN_SCHEMA}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_proxmox_test_connection(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Validate host reachability + token before importing."""
+    coord = _coordinator(hass)
+    if coord is None:
+        _send_not_setup(connection, msg["id"])
+        return
+    try:
+        req = _proxmox_request(coord, msg)
+    except ValueError as exc:
+        connection.send_error(msg["id"], "not_configured", str(exc))
+        return
+    connected, message = await proxmox.test_proxmox_connection(
+        hass,
+        req["host"],
+        req["port"],
+        req["token_id"],
+        req["token_secret"],
+        req["verify_tls"],
+    )
+    connection.send_result(
+        msg["id"], {"connected": connected, "message": message}
+    )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homelable/proxmox/import", **_PROXMOX_CONN_SCHEMA}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_proxmox_import(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Fetch the inventory and return nodes + edges + cluster pairs for a direct
+    canvas drop (the panel injects them client-side)."""
+    coord = _coordinator(hass)
+    if coord is None:
+        _send_not_setup(connection, msg["id"])
+        return
+    try:
+        req = _proxmox_request(coord, msg)
+    except ValueError as exc:
+        connection.send_error(msg["id"], "not_configured", str(exc))
+        return
+    try:
+        nodes, edges = await proxmox.fetch_proxmox_inventory(
+            hass,
+            req["host"],
+            req["port"],
+            req["token_id"],
+            req["token_secret"],
+            req["verify_tls"],
+        )
+    except proxmox.ProxmoxError as exc:
+        connection.send_error(msg["id"], "proxmox_error", str(exc))
+        return
+    except ValueError as exc:
+        connection.send_error(msg["id"], "bad_response", str(exc))
+        return
+    cluster_pairs = proxmox.build_proxmox_cluster_links(nodes)
+    connection.send_result(
+        msg["id"],
+        {
+            "nodes": nodes,
+            "edges": edges,
+            "cluster_pairs": [list(p) for p in cluster_pairs],
+            "device_count": len(nodes),
+            "advisory": proxmox.guest_visibility_advisory(nodes),
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homelable/proxmox/import_pending", **_PROXMOX_CONN_SCHEMA}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_proxmox_import_pending(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Kick off a background Proxmox import into pending (kind="proxmox");
+    surfaces under Scan History with a running → done transition."""
+    coord = _coordinator(hass)
+    if coord is None:
+        _send_not_setup(connection, msg["id"])
+        return
+    try:
+        result = await coord.trigger_proxmox_import(
+            host=msg.get("host"),
+            port=msg.get("port"),
+            token_id=msg.get("token_id"),
+            token_secret=msg.get("token_secret"),
+            verify_tls=msg.get("verify_tls"),
+        )
+    except ValueError as exc:
+        connection.send_error(msg["id"], "not_configured", str(exc))
+        return
     connection.send_result(msg["id"], result)

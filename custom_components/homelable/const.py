@@ -28,13 +28,40 @@ CONF_SCAN_RANGES = "scan_ranges"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_STATUS_INTERVAL = "status_interval"
 CONF_ZIGBEE_BASE_TOPIC = "zigbee_base_topic"
+CONF_ZWAVE_PREFIX = "zwave_prefix"
+CONF_ZWAVE_GATEWAY = "zwave_gateway"
 CONF_SERVICE_CHECK_ENABLED = "service_check_enabled"
 CONF_SERVICE_CHECK_INTERVAL = "service_check_interval"
+
+# Proxmox VE import. Token is a real credential, stored in the config entry
+# options like any HA integration credential; it is never returned by any WS
+# command (only `token_configured` is surfaced). Non-secret connection + auto-
+# sync config lives alongside it in options.
+CONF_PROXMOX_HOST = "proxmox_host"
+CONF_PROXMOX_PORT = "proxmox_port"
+CONF_PROXMOX_TOKEN_ID = "proxmox_token_id"
+CONF_PROXMOX_TOKEN_SECRET = "proxmox_token_secret"
+CONF_PROXMOX_VERIFY_TLS = "proxmox_verify_tls"
+CONF_PROXMOX_SYNC_ENABLED = "proxmox_sync_enabled"
+CONF_PROXMOX_SYNC_INTERVAL = "proxmox_sync_interval"
+
+DEFAULT_PROXMOX_PORT = 8006
+DEFAULT_PROXMOX_VERIFY_TLS = True
+DEFAULT_PROXMOX_SYNC_ENABLED = False
+DEFAULT_PROXMOX_SYNC_INTERVAL = 3600  # seconds (1h)
+MIN_PROXMOX_SYNC_INTERVAL = 300  # seconds (5 min)
+
+# Discovery-source tags for the two Proxmox link shapes. Host→guest links render
+# as 'virtual' edges; host↔host cluster links render as 'cluster' edges.
+PROXMOX_SOURCE = "proxmox"
+PROXMOX_CLUSTER_SOURCE = "proxmox_cluster"
 
 DEFAULT_SCAN_RANGES = ["192.168.1.0/24"]
 DEFAULT_SCAN_INTERVAL = 3600  # seconds (1h)
 DEFAULT_STATUS_INTERVAL = 60   # seconds
 DEFAULT_ZIGBEE_BASE_TOPIC = "zigbee2mqtt"
+DEFAULT_ZWAVE_PREFIX = "zwave"
+DEFAULT_ZWAVE_GATEWAY = "zwavejs2mqtt"
 # Per-service status checks are independent of node checks and off by default.
 DEFAULT_SERVICE_CHECK_ENABLED = False
 DEFAULT_SERVICE_CHECK_INTERVAL = 300  # seconds (5 min)
@@ -43,6 +70,10 @@ MIN_SERVICE_CHECK_INTERVAL = 30   # seconds
 # Zigbee networkmap timeouts (seconds). Large meshes (>50 devices) routinely
 # take 2-4 minutes; coordinator polls every router for routing tables.
 ZIGBEE_NETWORKMAP_TIMEOUT = 300.0
+
+# Z-Wave JS UI getNodes timeout (seconds). Large meshes are slow; the gateway
+# polls every node before answering.
+ZWAVE_NODES_TIMEOUT = 300.0
 
 # Dispatcher signal for live scan events (device_discovered / device_enriched
 # / scan_phase / scan_finished / scan_cancelled). Subscribers receive a single
@@ -59,3 +90,12 @@ PANEL_URL = "/homelable_files"
 PANEL_TITLE = "Homelable"
 PANEL_ICON = "mdi:lan"
 PANEL_NAME = "homelable-panel"
+
+# Media (floor-plan images and future raw image uploads) live on disk under the
+# HA config dir, served via a public static path. Filenames are server-generated
+# UUIDs (unguessable), so GET is public like the panel bundle; upload/delete
+# require an authenticated request. Guards against re-registering the view.
+MEDIA_URL = "/homelable_media"
+MEDIA_DIR = f"{DOMAIN}/media"  # relative to hass.config.path(...)
+MEDIA_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+MEDIA_REGISTERED_KEY = f"{DOMAIN}_media_registered"

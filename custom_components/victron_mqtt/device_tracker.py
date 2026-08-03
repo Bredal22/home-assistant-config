@@ -11,7 +11,8 @@ from ._vendor.victron_mqtt import (
     MetricKind,
 )
 
-from homeassistant.components.device_tracker import SourceType, TrackerEntity
+from homeassistant.components.device_tracker.const import SourceType
+from homeassistant.components.device_tracker.entity import TrackerEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -51,6 +52,10 @@ async def async_setup_entry(
 
 class VictronDeviceTracker(VictronBaseEntity, TrackerEntity):
     """Implementation of a Victron GX device tracker."""
+
+    # A missing GPS fix is a valid state (cleared location), not stale data,
+    # so the tracker must not be marked unavailable when the value is None.
+    _follow_metric_availability = False
 
     _attr_source_type = SourceType.GPS
 

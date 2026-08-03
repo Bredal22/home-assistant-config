@@ -1,6 +1,7 @@
 """DataUpdateCoordinator for Homelable."""
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
 import uuid
@@ -15,24 +16,41 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from . import scanner, status_checker, zigbee
+from . import proxmox, scanner, status_checker, zigbee, zwave
 from .const import (
+    CONF_PROXMOX_HOST,
+    CONF_PROXMOX_PORT,
+    CONF_PROXMOX_SYNC_ENABLED,
+    CONF_PROXMOX_SYNC_INTERVAL,
+    CONF_PROXMOX_TOKEN_ID,
+    CONF_PROXMOX_TOKEN_SECRET,
+    CONF_PROXMOX_VERIFY_TLS,
     CONF_SCAN_RANGES,
     CONF_SERVICE_CHECK_ENABLED,
     CONF_SERVICE_CHECK_INTERVAL,
     CONF_STATUS_INTERVAL,
     CONF_ZIGBEE_BASE_TOPIC,
+    CONF_ZWAVE_GATEWAY,
+    CONF_ZWAVE_PREFIX,
     DEFAULT_DESIGN_ICON,
     DEFAULT_DESIGN_NAME,
     DEFAULT_DESIGN_TYPE,
+    DEFAULT_PROXMOX_PORT,
+    DEFAULT_PROXMOX_SYNC_ENABLED,
+    DEFAULT_PROXMOX_SYNC_INTERVAL,
+    DEFAULT_PROXMOX_VERIFY_TLS,
     DEFAULT_SCAN_RANGES,
     DEFAULT_SERVICE_CHECK_ENABLED,
     DEFAULT_SERVICE_CHECK_INTERVAL,
     DEFAULT_STATUS_INTERVAL,
     DEFAULT_ZIGBEE_BASE_TOPIC,
+    DEFAULT_ZWAVE_GATEWAY,
+    DEFAULT_ZWAVE_PREFIX,
     DOMAIN,
     MAX_SCAN_RUNS,
+    MIN_PROXMOX_SYNC_INTERVAL,
     MIN_SERVICE_CHECK_INTERVAL,
+    PROXMOX_SOURCE,
     SCAN_SIGNAL,
     SERVICE_STATUS_SIGNAL,
     STORAGE_KEY_CANVAS,
@@ -49,6 +67,25 @@ _LOGGER = logging.getLogger(__name__)
 
 _EMPTY_CANVAS = {"nodes": [], "edges": [], "viewport": {"x": 0, "y": 0, "zoom": 1}}
 _EMPTY_PENDING: dict[str, Any] = {"devices": []}
+
+# Node lifecycle timestamps managed server-side (in the Store), never authored
+# by the frontend. Stripped when comparing a node's user-editable content so a
+# canvas save only bumps updated_at on a real change, and re-applied from the
+# stored node so a frontend round-trip can't clobber them.
+_NODE_TIMESTAMP_FIELDS = ("created_at", "updated_at", "last_scan", "last_seen")
+
+
+def _node_content(node: dict[str, Any]) -> dict[str, Any]:
+    """A node's user-editable content — everything except the server-managed
+    lifecycle timestamps. Used to decide whether a save really changed a node."""
+    return {k: v for k, v in node.items() if k not in _NODE_TIMESTAMP_FIELDS}
+
+
+def _is_wireless(node_type: str | None) -> bool:
+    """Zigbee + Z-Wave mesh devices share online status / no ICMP check."""
+    return bool(node_type) and (
+        node_type.startswith("zigbee_") or node_type.startswith("zwave_")
+    )
 
 
 def build_mac_property(mac: str | None) -> list[dict[str, Any]]:
@@ -77,6 +114,50 @@ def merge_mac_property(
         return out
     out.append({"key": "MAC", "value": mac, "icon": None, "visible": False})
     return out
+
+
+def _add_source(sources: list[str] | None, source: str | None) -> list[str]:
+    """Return ``sources`` with ``source`` appended if not already present.
+
+    Backs the multi-valued ``discovery_sources`` set: a device found by more than
+    one path (e.g. an IP scan *and* a Proxmox import) accumulates every source
+    that has seen it, so it surfaces under each matching inventory filter. Order
+    is preserved (origin first) and duplicates are dropped.
+    """
+    out = [s for s in (sources or []) if s]
+    if source and source not in out:
+        out.append(source)
+    return out
+
+
+def _ip_tokens(ip: str | None) -> list[str]:
+    """Split a node/device ``ip`` field into individual, trimmed addresses.
+
+    The canvas stores several addresses in one comma-separated string once a
+    user edits a node to add e.g. an IPv6 address (``"fe80::1, 192.168.1.5"``).
+    Matching a scanned device against that field must compare per-address, or
+    the device looks absent from the canvas (issue #258).
+    """
+    return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
+
+
+def _match_pending_by_ip_or_mac(
+    devices: list[dict[str, Any]], ip: str | None, mac: str | None
+) -> dict[str, Any] | None:
+    """First non-hidden pending device matching ``ip`` OR normalized ``mac``.
+
+    The MAC join lets a re-scan reconcile with a device previously imported from
+    Proxmox (which may have no IP but a known NIC MAC) instead of doubling up.
+    """
+    norm = proxmox.normalize_mac(mac)
+    for d in devices:
+        if d.get("status") == "hidden":
+            continue
+        if ip and d.get("ip") == ip:
+            return d
+        if norm and proxmox.normalize_mac(d.get("mac")) == norm:
+            return d
+    return None
 
 
 def _utc_now_iso() -> str:
@@ -120,6 +201,7 @@ class HomelableCoordinator(DataUpdateCoordinator):
         self._runs: list[dict[str, Any]] | None = None
         self._scan_run_id: str | None = None
         self._service_check_unsub: Callable[[], None] | None = None
+        self._proxmox_sync_unsub: Callable[[], None] | None = None
 
     # ─── Status checks (periodic) ────────────────────────────────────────────
 
@@ -136,16 +218,23 @@ class HomelableCoordinator(DataUpdateCoordinator):
             self.get_scan_ranges()
         )
         results: dict[str, dict[str, Any]] = {}
+        # Build the checks first, then run them all concurrently. Sequential
+        # awaits let a handful of offline hosts stack their timeouts and blow
+        # past HA's 60s setup deadline (issue #51 → CancelledError at startup).
+        node_ids: list[str] = []
+        tasks: list[Any] = []
         for node in self._all_canvas_nodes():
             node_id = node.get("id")
             if not node_id or node_id in results:
                 continue
+            # Reserve the entry now so a node id appears once even if it recurs.
+            results[node_id] = {}
             # The frontend serializes nodes flat (top-level ip/hostname/...);
             # legacy/test data may put them under `data`. Read both.
             data = node.get("data") or {}
             node_type = node.get("type") or data.get("type") or ""
-            if node_type.startswith("zigbee_"):
-                # Zigbee devices are one-shot imports from Z2M; no live check.
+            if _is_wireless(node_type):
+                # Zigbee / Z-Wave devices are one-shot mesh imports; no live check.
                 check = "none"
             else:
                 check = node.get("check_method") or data.get("check_method") or "ping"
@@ -156,16 +245,38 @@ class HomelableCoordinator(DataUpdateCoordinator):
                 or data.get("hostname")
             )
             ip = node.get("ip") or data.get("ip")
-            try:
-                results[node_id] = await status_checker.check_node(
+            node_ids.append(node_id)
+            tasks.append(
+                status_checker.check_node(
                     check, target, ip, allowed_networks=allowed_networks
                 )
-            except Exception as exc:
-                _LOGGER.debug("Status check error for %s: %s", node_id, exc)
-                results[node_id] = {
-                    "status": "unknown",
-                    "response_time_ms": None,
-                }
+            )
+
+        if tasks:
+            checked = await asyncio.gather(*tasks, return_exceptions=True)
+            for node_id, res in zip(node_ids, checked, strict=True):
+                if isinstance(res, Exception):
+                    _LOGGER.debug("Status check error for %s: %s", node_id, res)
+                    results[node_id] = {
+                        "status": "unknown",
+                        "response_time_ms": None,
+                    }
+                else:
+                    results[node_id] = res
+
+        # Persist last_seen on every node a check just found up (handles nodes
+        # copied across designs — matched by id, not the de-duped loop above).
+        # This writes the canvas Store on any poll where something is online;
+        # accepted so the inventory can surface a real "Last Seen".
+        now = _utc_now_iso()
+        dirty = False
+        for node in self._all_canvas_nodes():
+            res = results.get(node.get("id"))
+            if res and res.get("status") == "online":
+                node["last_seen"] = now
+                dirty = True
+        if dirty:
+            await self._save_canvases()
         return results
 
     # ─── Per-service status checks (periodic, independent) ────────────────────
@@ -347,10 +458,98 @@ class HomelableCoordinator(DataUpdateCoordinator):
             return design_id
         return self._designs[0]["id"] if self._designs else None
 
+    # Node.type values that are canvas annotations rather than real devices.
+    # Kept in sync with the frontend (Sidebar counts, canvasSerializer types).
+    _GROUP_TYPE = "groupRect"
+    _TEXT_TYPE = "text"
+
+    def _design_counts(self, design_id: str) -> dict[str, int]:
+        """node / group / text counts for a design's canvas (feeds the copy picker)."""
+        counts = {"node_count": 0, "group_count": 0, "text_count": 0}
+        canvas = (self._canvases or {}).get(design_id) or {}
+        for n in canvas.get("nodes", []):
+            node_type = n.get("type") or (n.get("data") or {}).get("type") or ""
+            if node_type == self._GROUP_TYPE:
+                counts["group_count"] += 1
+            elif node_type == self._TEXT_TYPE:
+                counts["text_count"] += 1
+            else:
+                counts["node_count"] += 1
+        return counts
+
     async def list_designs(self) -> list[dict[str, Any]]:
         await self._ensure_loaded()
         assert self._designs is not None
-        return self._designs
+        # Attach per-design counts transiently so the "copy from existing" picker
+        # can show what each canvas holds. Never persisted into the designs Store.
+        return [{**d, **self._design_counts(d["id"])} for d in self._designs]
+
+    async def copy_design(
+        self,
+        source_id: str,
+        name: str,
+        icon: str = DEFAULT_DESIGN_ICON,
+    ) -> dict[str, Any] | None:
+        """Create a new design that deep-copies the source's canvas.
+
+        Node ids are unique across designs, so every copied node gets a fresh id;
+        edges and parent/nesting links are re-pointed at the copy. Viewport, custom
+        style and any floor-plan config (carried on the canvas) are cloned as-is.
+        Returns the new design, or ``None`` when the source design is missing.
+        """
+        await self._ensure_loaded()
+        assert self._designs is not None and self._canvases is not None
+        source = next((d for d in self._designs if d["id"] == source_id), None)
+        if source is None:
+            return None
+
+        src_canvas = self._canvases.get(source_id) or copy.deepcopy(_EMPTY_CANVAS)
+        design = self._new_design(name, icon, source.get("design_type", DEFAULT_DESIGN_TYPE))
+
+        # Fresh id per source node so edges and parent links can be re-pointed.
+        id_map = {n["id"]: uuid.uuid4().hex for n in src_canvas.get("nodes", []) if n.get("id")}
+
+        new_nodes: list[dict[str, Any]] = []
+        for n in src_canvas.get("nodes", []):
+            nn = copy.deepcopy(n)
+            if nn.get("id") in id_map:
+                nn["id"] = id_map[nn["id"]]
+            # Stored nodes carry nesting as a top-level ``parent_id`` (group rect
+            # membership and container/wireless parenting alike). Re-point it at the
+            # copied parent; when it references a node outside this canvas (dangling)
+            # drop it so React Flow doesn't render the child at an unresolved
+            # position. Every same-canvas parent — including a zigbee coordinator
+            # whose id is its ieee — is in ``id_map``.
+            parent = nn.get("parent_id")
+            if parent in id_map:
+                nn["parent_id"] = id_map[parent]
+            elif parent is not None:
+                nn["parent_id"] = None
+            new_nodes.append(nn)
+
+        new_edges: list[dict[str, Any]] = []
+        for e in src_canvas.get("edges", []):
+            src, tgt = e.get("source"), e.get("target")
+            # Skip edges whose endpoints aren't part of this canvas (dangling).
+            if src not in id_map or tgt not in id_map:
+                continue
+            ne = copy.deepcopy(e)
+            ne["id"] = uuid.uuid4().hex
+            ne["source"] = id_map[src]
+            ne["target"] = id_map[tgt]
+            new_edges.append(ne)
+
+        # Clone the canvas wholesale (keeps viewport, customStyle, floor plan) then
+        # swap in the remapped nodes/edges.
+        new_canvas = copy.deepcopy(src_canvas)
+        new_canvas["nodes"] = new_nodes
+        new_canvas["edges"] = new_edges
+
+        self._designs.append(design)
+        self._canvases[design["id"]] = new_canvas
+        await self._save_designs()
+        await self._save_canvases()
+        return design
 
     async def create_design(
         self,
@@ -430,8 +629,48 @@ class HomelableCoordinator(DataUpdateCoordinator):
                 DEFAULT_DESIGN_NAME, DEFAULT_DESIGN_ICON, DEFAULT_DESIGN_TYPE
             )
             did = design["id"]
+        self._reconcile_node_timestamps(canvas, self._canvases.get(did))
         self._canvases[did] = canvas
         await self._save_canvases()
+
+    @staticmethod
+    def _reconcile_node_timestamps(
+        canvas: dict[str, Any], prior: dict[str, Any] | None
+    ) -> None:
+        """Stamp/preserve node lifecycle timestamps on an incoming canvas save.
+
+        The frontend round-trips every node on Save but never authors the
+        timestamps, so the Store stays authoritative:
+
+        - ``created_at`` / ``last_scan`` / ``last_seen`` are copied back from the
+          previously stored node (matched by id) — a stale frontend value can't
+          clobber them.
+        - a node with no prior (freshly drawn on the canvas) gets
+          ``created_at = updated_at = now`` and null scan/seen.
+        - ``updated_at`` bumps to now only when the node's user-editable content
+          actually changed; an unrelated save (pan, another node moved) leaves
+          untouched nodes' ``updated_at`` alone.
+        """
+        prior_by_id = {
+            n.get("id"): n
+            for n in (prior or {}).get("nodes", [])
+            if n.get("id")
+        }
+        now = _utc_now_iso()
+        for node in canvas.get("nodes", []):
+            old = prior_by_id.get(node.get("id"))
+            if old is None:
+                node["created_at"] = node.get("created_at") or now
+                node["updated_at"] = now
+                node.setdefault("last_scan", None)
+                node.setdefault("last_seen", None)
+                continue
+            # Store is authoritative for these — re-apply from the stored node.
+            node["created_at"] = old.get("created_at") or now
+            node["last_scan"] = old.get("last_scan")
+            node["last_seen"] = old.get("last_seen")
+            changed = _node_content(node) != _node_content(old)
+            node["updated_at"] = now if changed else (old.get("updated_at") or now)
 
     def _all_canvas_nodes(self) -> list[dict[str, Any]]:
         """Flatten nodes across every design's canvas (status + scan exclusion)."""
@@ -441,6 +680,26 @@ class HomelableCoordinator(DataUpdateCoordinator):
         for canvas in self._canvases.values():
             nodes.extend(canvas.get("nodes", []))
         return nodes
+
+    def _stamp_last_scan(self, devices: list[dict[str, Any]], now: str) -> bool:
+        """Stamp ``last_scan`` on every canvas node a scan observed.
+
+        A node matches a scanned device by ip or mac (nodes are stored flat but
+        may carry the values under ``data`` after a frontend round-trip, so read
+        both). Returns True if any node was stamped, so the caller can persist
+        the canvas Store once.
+        """
+        scanned_ips = {d.get("ip") for d in devices if d.get("ip")}
+        scanned_macs = {d.get("mac") for d in devices if d.get("mac")}
+        changed = False
+        for node in self._all_canvas_nodes():
+            data = node.get("data") or {}
+            ip = node.get("ip") or data.get("ip")
+            mac = node.get("mac") or data.get("mac")
+            if (ip and ip in scanned_ips) or (mac and mac in scanned_macs):
+                node["last_scan"] = now
+                changed = True
+        return changed
 
     # ─── Pending devices ─────────────────────────────────────────────────────
 
@@ -455,21 +714,203 @@ class HomelableCoordinator(DataUpdateCoordinator):
         if self._pending is not None:
             await self.pending_store.async_save(self._pending)
 
+    def _canvas_node_index(
+        self,
+    ) -> tuple[
+        dict[str, list[tuple[str, dict[str, Any]]]],
+        dict[str, list[tuple[str, dict[str, Any]]]],
+        dict[str, list[tuple[str, dict[str, Any]]]],
+    ]:
+        """Index canvas nodes by ip-token / mac / ieee_address → (design_id, node).
+
+        Backs both the canvas-count badge and the linked-node timestamps on the
+        inventory. Nodes are stored flat (top-level ip/ieee_address) but may also
+        carry the values under `data` after a frontend round-trip, so read both.
+
+        IP matching is per-address: a node's ``ip`` may hold several
+        comma-separated addresses (an IPv6 added before the IPv4), so we index
+        each token, not the raw string. MAC is a stable identifier immune to
+        such IP edits, so it is matched too — cumulatively with ip/ieee (#258).
+        """
+        by_ip: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        by_mac: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        by_ieee: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        for design_id, canvas in (self._canvases or {}).items():
+            for n in canvas.get("nodes", []):
+                data = n.get("data") or {}
+                ip = n.get("ip") or data.get("ip")
+                mac = n.get("mac") or data.get("mac")
+                ieee = n.get("ieee_address") or data.get("ieee_address")
+                for tok in _ip_tokens(ip):
+                    by_ip.setdefault(tok, []).append((design_id, n))
+                if mac:
+                    by_mac.setdefault(mac, []).append((design_id, n))
+                if ieee:
+                    by_ieee.setdefault(ieee, []).append((design_id, n))
+        return by_ip, by_mac, by_ieee
+
+    @staticmethod
+    def _agg_timestamp(values: list[str | None], *, newest: bool) -> str | None:
+        """Pick the newest (max) or oldest (min) ISO timestamp, or None.
+
+        Parses to datetime so a missing-microseconds string can't misorder
+        lexicographically; returns the chosen value's original string.
+        """
+        parsed: list[tuple[datetime, str]] = []
+        for v in values:
+            if not v:
+                continue
+            try:
+                parsed.append((datetime.fromisoformat(v.replace("Z", "+00:00")), v))
+            except (ValueError, AttributeError):
+                continue
+        if not parsed:
+            return None
+        return (max(parsed) if newest else min(parsed))[1]
+
+    def _design_placed_index(
+        self, design_id: str | None
+    ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+        """(ip-token, mac, ieee) → existing node id already on a design's canvas.
+
+        IPs are indexed per comma-separated token so a node whose ip is
+        ``"fe80::1, 192.168.1.5"`` still matches a device scanned as the plain
+        ``192.168.1.5`` (issue #258). MAC is matched too — stable across IP
+        edits. The node id lets bulk-approve point the user at what it skipped.
+        """
+        by_ip: dict[str, str] = {}
+        by_mac: dict[str, str] = {}
+        by_ieee: dict[str, str] = {}
+        if not design_id:
+            return by_ip, by_mac, by_ieee
+        canvas = (self._canvases or {}).get(design_id) or {}
+        for n in canvas.get("nodes", []):
+            data = n.get("data") or {}
+            nid = n.get("id")
+            ip = n.get("ip") or data.get("ip")
+            mac = n.get("mac") or data.get("mac")
+            ieee = n.get("ieee_address") or data.get("ieee_address")
+            for tok in _ip_tokens(ip):
+                by_ip.setdefault(tok, nid)
+            if mac:
+                by_mac.setdefault(mac, nid)
+            if ieee:
+                by_ieee.setdefault(ieee, nid)
+        return by_ip, by_mac, by_ieee
+
+    def _find_duplicate_node(
+        self,
+        design_id: str | None,
+        ip: str | None,
+        mac: str | None,
+        ieee: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Conflict details if an equivalent node (same ieee, ip OR mac) already
+        sits on ``design_id``, else ``None``.
+
+        Scoped to a single design on purpose: the same device may legitimately
+        appear on several canvases (one node per design). Only a second node for
+        the same ieee/ip/mac on the *same* design is a duplicate — which the
+        approve path turns into a prompt so the UI can offer "go to existing" vs
+        "add duplicate anyway", uniformly for IEEE (Zigbee/Z-Wave) and plain
+        IP/ARP hosts.
+
+        IP matching is per-token and whole-address: a node at ``10.0.0.40`` is
+        not a duplicate of a device at ``10.0.0.4`` (guards the substring false
+        positive). Prefers ieee > ip > mac when several identifiers match.
+        """
+        if not design_id:
+            return None
+        ip_toks = _ip_tokens(ip)
+        canvas = (self._canvases or {}).get(design_id) or {}
+        for n in canvas.get("nodes", []):
+            data = n.get("data") or {}
+            n_ieee = n.get("ieee_address") or data.get("ieee_address")
+            n_mac = n.get("mac") or data.get("mac")
+            n_toks = set(_ip_tokens(n.get("ip") or data.get("ip")))
+            match: str | None = None
+            value: str | None = None
+            if ieee and n_ieee == ieee:
+                match, value = "ieee", n_ieee
+            else:
+                hit = next((t for t in ip_toks if t in n_toks), None)
+                if hit is not None:
+                    match, value = "ip", hit
+                elif mac and n_mac == mac:
+                    match, value = "mac", mac
+            if match is not None:
+                return {
+                    "duplicate": True,
+                    "existing_node_id": n.get("id"),
+                    "existing_label": n.get("label") or (data.get("label")),
+                    "match": match,
+                    "value": value,
+                }
+        return None
+
     async def list_pending(
         self, *, status: str = "pending", source: str | None = None
     ) -> list[dict[str, Any]]:
-        """Return pending devices filtered by status and (optionally) source.
+        """Return inventory devices filtered by status and (optionally) source.
+
+        `status="pending"` is the Device Inventory view: it returns every
+        non-hidden device — freshly discovered (`pending`) AND already approved
+        onto a canvas (`approved`) — each badged with a `canvas_count` of how
+        many canvases it appears on. `status="hidden"` returns hidden devices.
 
         Devices written before the `source` field existed are treated as "scan".
         Zigbee-specific fields (`ieee_address`, `friendly_name`, ...) are
         stored under `data_extras` to keep the schema additive; flatten them
         into the top-level dict for the wire so the frontend sees one shape.
         """
+        await self._ensure_loaded()
         store = await self._get_pending()
-        out = [d for d in store["devices"] if d.get("status") == status]
+        if status == "pending":
+            # Inventory view: pending + approved. Transient "discovering" rows
+            # (mid-scan, not yet enriched) and hidden rows are excluded.
+            out = [
+                d for d in store["devices"] if d.get("status") in ("pending", "approved")
+            ]
+        else:
+            # Exact-status query (e.g. "hidden", "discovering").
+            out = [d for d in store["devices"] if d.get("status") == status]
         if source is not None:
             out = [d for d in out if (d.get("source") or "scan") == source]
-        return [self._flatten_pending(d) for d in out]
+
+        by_ip, by_mac, by_ieee = self._canvas_node_index()
+        wire: list[dict[str, Any]] = []
+        for d in out:
+            # Copy so the transient fields never leak back into the store.
+            fd = dict(self._flatten_pending(d))
+            matched: list[tuple[str, dict[str, Any]]] = []
+            ieee = fd.get("ieee_address")
+            if ieee:
+                matched += by_ieee.get(ieee, [])
+            if fd.get("mac"):
+                matched += by_mac.get(fd["mac"], [])
+            for tok in _ip_tokens(fd.get("ip")):
+                matched += by_ip.get(tok, [])
+            # De-duplicate nodes matched by more than one identifier.
+            matched = list({id(n): (did, n) for did, n in matched}.values())
+            designs = {did for did, _ in matched}
+            nodes = [n for _, n in matched]
+            fd["canvas_count"] = len(designs)
+            # Linked-node timestamps: created = oldest across matches; last_scan
+            # / last_modified / last_seen = newest. Null when not on any canvas.
+            fd["node_created_at"] = self._agg_timestamp(
+                [n.get("created_at") for n in nodes], newest=False
+            )
+            fd["node_last_scan"] = self._agg_timestamp(
+                [n.get("last_scan") for n in nodes], newest=True
+            )
+            fd["node_last_modified"] = self._agg_timestamp(
+                [n.get("updated_at") for n in nodes], newest=True
+            )
+            fd["node_last_seen"] = self._agg_timestamp(
+                [n.get("last_seen") for n in nodes], newest=True
+            )
+            wire.append(fd)
+        return wire
 
     @staticmethod
     def _flatten_pending(device: dict[str, Any]) -> dict[str, Any]:
@@ -523,11 +964,12 @@ class HomelableCoordinator(DataUpdateCoordinator):
                 return True
         return False
 
-    async def _create_zigbee_parent_edge(
+    async def _create_wireless_parent_edge(
         self, child_node: dict[str, Any], design_id: str | None = None
     ) -> dict[str, Any] | None:
-        """If child is a zigbee node with a known parent on the same design's
-        canvas, append a parent → child edge to that canvas and return it.
+        """If child is a zigbee/zwave node with a known parent on the same
+        design's canvas, append a parent → child edge to that canvas and return
+        it.
 
         Idempotent: skips if an edge with the same source+target already exists.
         """
@@ -571,6 +1013,96 @@ class HomelableCoordinator(DataUpdateCoordinator):
         await self.save_canvas(canvas, design_id)
         return edge
 
+    async def _create_proxmox_edges(
+        self, node: dict[str, Any], design_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Materialize Proxmox link edges for a just-approved node.
+
+        Two shapes, both resolved against nodes already on the same design's
+        canvas (a peer not yet approved is skipped and picked up when it lands):
+          - host→guest: the guest carries ``proxmox_parent`` (host ieee) →
+            a vertical ``virtual`` edge (bottom → top).
+          - host↔host: a cluster host carries directed ``cluster_links``
+            (``{source, target}`` ieees) → horizontal ``cluster`` edges rendered
+            source.right → target.left. Direction is preserved from the import so
+            a middle host chains (target on its left, source on its right) rather
+            than firing both its edges from the same handle. Every endpoint gets a
+            left + right handle so the connection points exist.
+        Idempotent: an edge is skipped if one already joins the two nodes.
+        """
+        data = node.get("data") or {}
+        parent_ieee = node.get("proxmox_parent") or data.get("proxmox_parent")
+        links = node.get("cluster_links") or data.get("cluster_links") or []
+        if not parent_ieee and not links:
+            return []
+
+        design_id = await self._resolve_design_id(design_id)
+        canvas = await self.get_canvas(design_id)
+        nodes = canvas.get("nodes", [])
+
+        def _by_ieee(ieee: str) -> dict[str, Any] | None:
+            return next(
+                (
+                    n
+                    for n in nodes
+                    if (n.get("ieee_address") or (n.get("data") or {}).get("ieee_address"))
+                    == ieee
+                ),
+                None,
+            )
+
+        edges = canvas.setdefault("edges", [])
+
+        def _linked(a_id: str, b_id: str) -> bool:
+            return any(
+                (e.get("source") == a_id and e.get("target") == b_id)
+                or (e.get("source") == b_id and e.get("target") == a_id)
+                for e in edges
+            )
+
+        created: list[dict[str, Any]] = []
+
+        if parent_ieee:
+            parent = _by_ieee(parent_ieee)
+            if parent is not None and not _linked(parent["id"], node["id"]):
+                edge = {
+                    "id": f"e-{parent['id']}-{node['id']}",
+                    "source": parent["id"],
+                    "target": node["id"],
+                    "sourceHandle": "bottom",
+                    "targetHandle": "top",
+                    "type": "virtual",
+                    "data": {"type": "virtual"},
+                }
+                edges.append(edge)
+                created.append(edge)
+
+        for link in links:
+            src = _by_ieee(link.get("source"))
+            tgt = _by_ieee(link.get("target"))
+            if src is None or tgt is None or _linked(src["id"], tgt["id"]):
+                continue
+            # Source uses its right handle, target its left — grant both to each
+            # endpoint so the connection points exist regardless of chain position.
+            for host in (src, tgt):
+                host["left_handles"] = max(int(host.get("left_handles") or 0), 1)
+                host["right_handles"] = max(int(host.get("right_handles") or 0), 1)
+            edge = {
+                "id": f"e-{src['id']}-{tgt['id']}",
+                "source": src["id"],
+                "target": tgt["id"],
+                "sourceHandle": "right",
+                "targetHandle": "left",
+                "type": "cluster",
+                "data": {"type": "cluster"},
+            }
+            edges.append(edge)
+            created.append(edge)
+
+        if created:
+            await self.save_canvas(canvas, design_id)
+        return created
+
     async def approve_pending(
         self, device_id: str, node_overrides: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
@@ -591,32 +1123,64 @@ class HomelableCoordinator(DataUpdateCoordinator):
         # the node dict below only copies explicit keys + data_extras + data.
         design_id = await self._resolve_design_id(overrides.get("design_id"))
         node_type = overrides.get("type") or device.get("suggested_type") or "generic"
-        # Zigbee devices are imported one-shot from Z2M; no live status check
-        # is possible, so default check_method to "none" (status_checker treats
-        # "none" as always-online).
-        is_zigbee = (
-            device.get("source") == "zigbee" or node_type.startswith("zigbee_")
+        # Zigbee / Z-Wave devices are imported one-shot from their mesh gateway;
+        # no live status check is possible, so default check_method to "none"
+        # (status_checker treats "none" as always-online).
+        is_wireless = (
+            device.get("source") in ("zigbee", "zwave")
+            or node_type.startswith("zigbee_")
+            or node_type.startswith("zwave_")
         )
-        default_check = "none" if is_zigbee else "ping"
-        # Zigbee devices report from Z2M as reachable, so they land online; the
-        # status checker never polls them (check_method "none").
-        default_status = "online" if is_zigbee else "unknown"
-        # Zigbee devices carry their own canonical fields (ieee_address, model,
+        is_zwave = device.get("source") == "zwave" or node_type.startswith("zwave_")
+        # Non-wireless devices get a ping check, but a Proxmox guest imported
+        # without an IP (stopped VM / no guest agent) has nothing to ping, so
+        # fall back to "none" rather than a check that always reports offline.
+        default_check = "none" if is_wireless else ("ping" if device.get("ip") else "none")
+        # Mesh devices report from their gateway as reachable, so they land
+        # online; the status checker never polls them (check_method "none").
+        default_status = "online" if is_wireless else "unknown"
+        # Mesh devices carry their own canonical fields (ieee_address, model,
         # vendor, lqi, parent_id) under data_extras; merge them so the node on
-        # the canvas has everything the zigbee node component renders.
+        # the canvas has everything the zigbee/zwave node component renders.
         data_extras = device.get("data_extras") or {}
-        # Surface IEEE/Vendor/Model/LQI as right-panel property rows (hidden by
-        # default — users opt in to showing them on the canvas card).
-        zigbee_props = (
-            zigbee.build_zigbee_properties(
+        # A device already on THIS design (matched by ieee, ip OR mac) is NOT
+        # placed again automatically: the user might genuinely want a second
+        # card, or might be re-approving by mistake. Return the conflict + the
+        # existing node so the panel can ask — identical handling for IEEE
+        # (Zigbee/Z-Wave) and plain IP/ARP hosts. force=True (set after the user
+        # confirms) skips this. The same device on a *different* design is valid
+        # (one node per canvas), so this is scoped to design_id.
+        if not overrides.get("force"):
+            conflict = self._find_duplicate_node(
+                design_id,
+                overrides.get("ip") or device.get("ip"),
+                overrides.get("mac") or device.get("mac"),
+                data_extras.get("ieee_address"),
+            )
+            if conflict is not None:
+                return {"duplicate": conflict}
+        # Surface Identity/Vendor/Model/LQI as right-panel property rows (hidden
+        # by default — users opt in to showing them on the canvas card). Z-Wave
+        # has no LQI row.
+        if not is_wireless:
+            # Proxmox carries display specs (CPU/RAM/Disk/VMID) on the pending
+            # row; scan devices carry none. Copy so store rows aren't aliased.
+            wireless_props: list[dict[str, Any]] = [
+                dict(p) for p in (device.get("properties") or [])
+            ]
+        elif is_zwave:
+            wireless_props = zwave.build_zwave_properties(
+                data_extras.get("ieee_address"),
+                data_extras.get("vendor"),
+                data_extras.get("model"),
+            )
+        else:
+            wireless_props = zigbee.build_zigbee_properties(
                 data_extras.get("ieee_address"),
                 data_extras.get("vendor"),
                 data_extras.get("model"),
                 data_extras.get("lqi"),
             )
-            if is_zigbee
-            else []
-        )
         # Canvas nodes are stored FLAT (top-level ip/services/pos_x/...), to
         # match what the frontend serializes on Save and reads back on load
         # (deserializeApiNode). Building a nested {position, data:{...}} node
@@ -624,6 +1188,7 @@ class HomelableCoordinator(DataUpdateCoordinator):
         # on the next reload, until the user happens to press Save and the
         # frontend rewrites every node flat. Keep it flat from the start.
         position = overrides.get("position") or {"x": 0, "y": 0}
+        now = _utc_now_iso()
         node = {
             "id": overrides.get("id")
             or data_extras.get("ieee_address")
@@ -640,16 +1205,24 @@ class HomelableCoordinator(DataUpdateCoordinator):
             "services": device.get("services", []),
             "status": overrides.get("status", default_status),
             "check_method": overrides.get("check_method", default_check),
-            "properties": zigbee_props,
+            "properties": wireless_props,
             "pos_x": position.get("x", 0),
             "pos_y": position.get("y", 0),
             **data_extras,
             **overrides.get("data", {}),
+            # Inventory lifecycle timestamps (authoritative — set after the
+            # spreads so a frontend-supplied `data` blob can never inject them).
+            # created_at / updated_at start equal; last_scan is stamped when a
+            # scan observes this node, last_seen when a status check finds it up.
+            "created_at": now,
+            "updated_at": now,
+            "last_scan": None,
+            "last_seen": None,
         }
-        # Non-zigbee nodes carry the scanned MAC as a hidden property row so the
+        # Non-mesh nodes carry the scanned MAC as a hidden property row so the
         # user can opt in to showing it on the canvas card. Merge (rather than
         # overwrite) to preserve any properties carried on the approve payload.
-        if not is_zigbee:
+        if not is_wireless:
             node["properties"] = merge_mac_property(
                 node.get("properties"), device.get("mac")
             )
@@ -658,8 +1231,120 @@ class HomelableCoordinator(DataUpdateCoordinator):
         canvas.setdefault("nodes", []).append(node)
         await self.save_canvas(canvas, design_id)
 
-        await self.remove_pending(device_id)
+        # Device Inventory: keep the row, flip it to "approved" rather than
+        # deleting it, so the device stays listed and gets badged with the
+        # number of canvases it appears on (see list_pending / _canvas_node_index).
+        device["status"] = "approved"
+        await self._save_pending()
         return node
+
+    async def approve_batch(
+        self, device_ids: list[str], overrides: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Approve several devices onto the active design in one pass.
+
+        Skips any device already placed on that design (matched by ip-token, mac
+        or ieee_address) — including a duplicate selection within this same batch
+        — so a re-approve or a doubled id never creates a duplicate node. Canvas
+        membership is per-design, so a device already approved onto *another*
+        canvas is still placed here.
+
+        Bulk can't prompt per-device the way single approve does, so each skip
+        is also reported in ``skipped_devices`` (with the identifier that matched
+        and the existing node id) instead of being silently dropped.
+        """
+        overrides = overrides or {}
+        await self._ensure_loaded()
+        design_id = await self._resolve_design_id(overrides.get("design_id"))
+        placed_ip, placed_mac, placed_ieee = self._design_placed_index(design_id)
+        pending = await self._get_pending()
+        by_id = {d["id"]: d for d in pending["devices"]}
+        # This method has already decided per-device whether to place, so tell
+        # approve_pending to skip its own duplicate guard (force) — otherwise it
+        # would refuse the very nodes we chose to add.
+        force_overrides = {**overrides, "force": True}
+
+        def _label(device: dict[str, Any]) -> str:
+            extras = device.get("data_extras") or {}
+            return (
+                device.get("hostname")
+                or extras.get("friendly_name")
+                or device.get("ip")
+                or extras.get("ieee_address")
+                or "device"
+            )
+
+        nodes: list[dict[str, Any]] = []
+        node_ids: list[str] = []
+        approved_ids: list[str] = []
+        edges: list[dict[str, Any]] = []
+        skipped: list[str] = []
+        skipped_devices: list[dict[str, Any]] = []
+        not_found: list[str] = []
+        for device_id in device_ids:
+            device = by_id.get(device_id)
+            if device is None:
+                not_found.append(device_id)
+                continue
+            ip = device.get("ip")
+            mac = device.get("mac")
+            ieee = (device.get("data_extras") or {}).get("ieee_address")
+            # Record which identifier collided so the caller can explain each
+            # skip and link to the node already there (ip > ieee > mac).
+            ip_hit = next((t for t in _ip_tokens(ip) if t in placed_ip), None)
+            if ip_hit is not None:
+                skipped.append(device_id)
+                skipped_devices.append({
+                    "device_id": device_id, "label": _label(device),
+                    "match": "ip", "value": ip_hit,
+                    "existing_node_id": placed_ip[ip_hit],
+                })
+                continue
+            if ieee and ieee in placed_ieee:
+                skipped.append(device_id)
+                skipped_devices.append({
+                    "device_id": device_id, "label": _label(device),
+                    "match": "ieee", "value": ieee,
+                    "existing_node_id": placed_ieee[ieee],
+                })
+                continue
+            if mac and mac in placed_mac:
+                skipped.append(device_id)
+                skipped_devices.append({
+                    "device_id": device_id, "label": _label(device),
+                    "match": "mac", "value": mac,
+                    "existing_node_id": placed_mac[mac],
+                })
+                continue
+            node = await self.approve_pending(device_id, force_overrides)
+            if node is None:
+                not_found.append(device_id)
+                continue
+            nodes.append(node)
+            node_ids.append(node["id"])
+            approved_ids.append(device_id)
+            # Track within the batch so a repeated ip/mac/ieee isn't placed twice.
+            for tok in _ip_tokens(ip):
+                placed_ip[tok] = node["id"]
+            if mac:
+                placed_mac[mac] = node["id"]
+            if ieee:
+                placed_ieee[ieee] = node["id"]
+            auto_edge = await self._create_wireless_parent_edge(node, design_id)
+            if auto_edge:
+                edges.append(auto_edge)
+            edges.extend(await self._create_proxmox_edges(node, design_id))
+        return {
+            "approved": len(nodes),
+            "nodes": nodes,
+            "device_ids": approved_ids,
+            "node_ids": node_ids,
+            "edges": edges,
+            "edges_created": len(edges),
+            "skipped": skipped,
+            "skipped_devices": skipped_devices,
+            "not_found": not_found,
+        }
 
     # ─── Scan ────────────────────────────────────────────────────────────────
 
@@ -696,11 +1381,20 @@ class HomelableCoordinator(DataUpdateCoordinator):
             ranges = [r.strip() for r in ranges.split(",") if r.strip()]
         return list(ranges)
 
-    async def trigger_scan(self) -> dict[str, Any]:
+    async def trigger_scan(
+        self,
+        *,
+        http_ranges: list[str] | None = None,
+        http_probe_enabled: bool = False,
+        verify_tls: bool = False,
+    ) -> dict[str, Any]:
         """Kick off a scan in the background. Returns immediately.
 
         Response: {run_id, status: "running"|"already_running", devices_found: 0, new_devices: 0}.
         UI polls history for progress / completion.
+
+        Deep-scan options (per-scan; not persisted) extend the port list and run
+        an HTTP probe so services on custom ports can be identified.
         """
         if self._scan_run_id is not None:
             return {
@@ -713,13 +1407,17 @@ class HomelableCoordinator(DataUpdateCoordinator):
         ranges = self.get_scan_ranges()
         await self._ensure_loaded()
         pending = await self._get_pending()
-        canvas_ips = {
-            n.get("ip") or n.get("data", {}).get("ip")
-            for n in self._all_canvas_nodes()
-            if n.get("ip") or n.get("data", {}).get("ip")
-        }
+        # Device Inventory: on-canvas devices are intentionally NOT excluded any
+        # more — they stay in the inventory and are badged with a canvas count.
+        # Only user-hidden devices are suppressed.
         hidden_ips = {d["ip"] for d in pending["devices"] if d.get("status") == "hidden"}
-        exclude = canvas_ips | hidden_ips
+        exclude = hidden_ips
+
+        deep_scan = scanner.DeepScanOptions(
+            http_ranges=list(http_ranges or []),
+            http_probe_enabled=bool(http_probe_enabled),
+            verify_tls=bool(verify_tls),
+        )
 
         run_id = uuid.uuid4().hex
         self._scan_run_id = run_id
@@ -737,7 +1435,7 @@ class HomelableCoordinator(DataUpdateCoordinator):
         )
 
         self.hass.async_create_task(
-            self._run_scan_task(run_id, ranges, exclude, started_at)
+            self._run_scan_task(run_id, ranges, exclude, started_at, deep_scan)
         )
         return {
             "run_id": run_id,
@@ -764,38 +1462,47 @@ class HomelableCoordinator(DataUpdateCoordinator):
 
         if event == "device_discovered" and ip:
             pending = await self._get_pending()
-            existing = next(
-                (d for d in pending["devices"] if d.get("ip") == ip),
-                None,
+            src = device.get("discovery_source")
+            norm_mac = proxmox.normalize_mac(device.get("mac"))
+            existing = _match_pending_by_ip_or_mac(
+                pending["devices"], ip, device.get("mac")
             )
             if existing is None:
                 pending["devices"].append(
                     {
                         "id": f"pd-{uuid.uuid4().hex[:8]}",
                         "ip": ip,
-                        "mac": device.get("mac"),
+                        "mac": norm_mac,
                         "hostname": device.get("hostname"),
                         "os": None,
                         "open_ports": [],
                         "services": [],
                         "suggested_type": None,
-                        "discovery_source": device.get("discovery_source"),
+                        "discovery_source": src,
+                        "discovery_sources": [src] if src else [],
                         "status": "discovering",
                         "discovered_at": _utc_now_iso(),
                     }
                 )
-            elif existing.get("status") in ("discovering", "pending"):
-                # Refresh meta if we got better info this run.
-                existing["mac"] = device.get("mac") or existing.get("mac")
+            elif existing.get("status") in ("discovering", "pending", "approved"):
+                # Refresh meta if we got better info this run (approved rows keep
+                # their status — they just get fresher fields). Fill an IP a
+                # Proxmox import lacked and union the scan source.
+                existing["ip"] = existing.get("ip") or ip
+                existing["mac"] = norm_mac or existing.get("mac")
                 existing["hostname"] = (
                     device.get("hostname") or existing.get("hostname")
+                )
+                existing["discovery_sources"] = _add_source(
+                    existing.get("discovery_sources"), src
                 )
 
         elif event == "device_enriched" and ip:
             pending = await self._get_pending()
-            existing = next(
-                (d for d in pending["devices"] if d.get("ip") == ip),
-                None,
+            src = device.get("discovery_source")
+            norm_mac = proxmox.normalize_mac(device.get("mac"))
+            existing = _match_pending_by_ip_or_mac(
+                pending["devices"], ip, device.get("mac")
             )
             if existing is None:
                 # mDNS-only path can land here without a prior discovery event
@@ -804,33 +1511,45 @@ class HomelableCoordinator(DataUpdateCoordinator):
                     {
                         "id": f"pd-{uuid.uuid4().hex[:8]}",
                         "ip": ip,
-                        "mac": device.get("mac"),
+                        "mac": norm_mac,
                         "hostname": device.get("hostname"),
                         "os": device.get("os"),
                         "open_ports": device.get("open_ports", []),
                         "services": device.get("services", []),
                         "suggested_type": device.get("suggested_type"),
-                        "discovery_source": device.get("discovery_source"),
+                        "discovery_source": src,
+                        "discovery_sources": [src] if src else [],
                         "status": "pending",
                         "discovered_at": _utc_now_iso(),
                     }
                 )
-            elif existing.get("status") in ("discovering", "pending"):
+            elif existing.get("status") in ("discovering", "pending", "approved"):
+                # Approved (on-canvas) devices keep their status on re-scan; only
+                # their scanned fields refresh. Don't downgrade a Proxmox-typed
+                # guest (vm/lxc) to the generic scan guess — the importer knows
+                # the true type. Fill an IP a Proxmox import lacked; union source.
+                keep_approved = existing.get("status") == "approved"
+                is_pve = str(existing.get("ieee_address") or "").startswith("pve-")
                 existing.update(
                     {
-                        "mac": device.get("mac") or existing.get("mac"),
+                        "ip": existing.get("ip") or ip,
+                        "mac": norm_mac or existing.get("mac"),
                         "hostname": device.get("hostname") or existing.get("hostname"),
                         "os": device.get("os") or existing.get("os"),
                         "open_ports": device.get("open_ports", []),
                         "services": device.get("services", []),
-                        "suggested_type": device.get("suggested_type"),
-                        "discovery_source": device.get("discovery_source"),
-                        "status": "pending",
+                        "suggested_type": existing.get("suggested_type")
+                        if is_pve
+                        else device.get("suggested_type"),
+                        "status": "approved" if keep_approved else "pending",
                     }
                 )
+                existing["discovery_sources"] = _add_source(
+                    existing.get("discovery_sources"), src
+                )
             # Echo the stored device id back so the frontend can reconcile.
-            stored = next(
-                (d for d in pending["devices"] if d.get("ip") == ip), None
+            stored = _match_pending_by_ip_or_mac(
+                pending["devices"], ip, device.get("mac")
             )
             if stored is not None:
                 out["device"] = {**device, "id": stored["id"]}
@@ -843,6 +1562,7 @@ class HomelableCoordinator(DataUpdateCoordinator):
         ranges: list[str],
         exclude: set[str],
         started_at: str,
+        deep_scan: scanner.DeepScanOptions | None = None,
     ) -> None:
         """Background scan body. Records run state, merges into pending store."""
         async def _on_event(payload: dict[str, Any]) -> None:
@@ -855,6 +1575,7 @@ class HomelableCoordinator(DataUpdateCoordinator):
                 exclude_ips=exclude,
                 on_event=_on_event,
                 hass=self.hass,
+                deep_scan=deep_scan,
             )
         except Exception as exc:  # noqa: BLE001 — record any failure, then exit
             _LOGGER.exception("Scan %s failed", run_id)
@@ -886,38 +1607,50 @@ class HomelableCoordinator(DataUpdateCoordinator):
         now = _utc_now_iso()
         scanned_ips = {dev["ip"] for dev in devices}
         for dev in devices:
-            existing = next(
-                (d for d in pending["devices"] if d.get("ip") == dev["ip"]),
-                None,
+            src = dev.get("discovery_source")
+            norm_mac = proxmox.normalize_mac(dev.get("mac"))
+            existing = _match_pending_by_ip_or_mac(
+                pending["devices"], dev["ip"], dev.get("mac")
             )
             if existing is None:
                 pending["devices"].append(
                     {
                         "id": f"pd-{uuid.uuid4().hex[:8]}",
                         "ip": dev["ip"],
-                        "mac": dev.get("mac"),
+                        "mac": norm_mac,
                         "hostname": dev.get("hostname"),
                         "os": dev.get("os"),
                         "open_ports": dev.get("open_ports", []),
                         "services": dev.get("services", []),
                         "suggested_type": dev.get("suggested_type"),
-                        "discovery_source": dev.get("discovery_source"),
+                        "discovery_source": src,
+                        "discovery_sources": [src] if src else [],
                         "status": "pending",
                         "discovered_at": now,
                     }
                 )
-            elif existing.get("status") in ("discovering", "pending"):
+            elif existing.get("status") in ("discovering", "pending", "approved"):
+                # Approved (on-canvas) devices keep their status; fields refresh.
+                # Preserve a Proxmox-typed guest's type + fill a missing IP; union
+                # the scan source so the row shows under both inventory filters.
+                keep_approved = existing.get("status") == "approved"
+                is_pve = str(existing.get("ieee_address") or "").startswith("pve-")
                 existing.update(
                     {
-                        "mac": dev.get("mac") or existing.get("mac"),
+                        "ip": existing.get("ip") or dev["ip"],
+                        "mac": norm_mac or existing.get("mac"),
                         "hostname": dev.get("hostname") or existing.get("hostname"),
                         "os": dev.get("os") or existing.get("os"),
                         "open_ports": dev.get("open_ports", []),
                         "services": dev.get("services", []),
-                        "suggested_type": dev.get("suggested_type"),
-                        "discovery_source": dev.get("discovery_source"),
-                        "status": "pending",
+                        "suggested_type": existing.get("suggested_type")
+                        if is_pve
+                        else dev.get("suggested_type"),
+                        "status": "approved" if keep_approved else "pending",
                     }
+                )
+                existing["discovery_sources"] = _add_source(
+                    existing.get("discovery_sources"), src
                 )
 
         # Promote any leftover `discovering` entries from this scan that we
@@ -927,6 +1660,13 @@ class HomelableCoordinator(DataUpdateCoordinator):
                 pending["devices"].remove(d)
 
         await self._save_pending()
+
+        # Stamp last_scan on any canvas node this run observed (matched by ip or
+        # mac). Done once here, at scan end, to match the "persist once" pattern
+        # above rather than writing the canvas Store per host.
+        if self._stamp_last_scan(devices, now):
+            await self._save_canvases()
+
         await self._record_run(
             {
                 "id": run_id,
@@ -968,6 +1708,89 @@ class HomelableCoordinator(DataUpdateCoordinator):
         """Trigger a Z2M networkmap request and return parsed (nodes, edges)."""
         return await zigbee.fetch_networkmap(self.hass, self.get_zigbee_base_topic())
 
+    async def trigger_zigbee_import(self) -> dict[str, Any]:
+        """Kick off a Zigbee import in the background. Returns immediately.
+
+        Records a ``kind="zigbee"`` scan run (running) and spawns the actual
+        network-map fetch + pending-store write, so the import surfaces under
+        Scan History with a live running → done transition — mirroring IP
+        scans. The MQTT round-trip (which can take minutes on large meshes)
+        runs in the background instead of blocking the UI. The panel polls
+        history for progress / completion.
+
+        Response: ``{run_id, status: "running", devices_found: 0}``.
+        """
+        run_id = uuid.uuid4().hex
+        started_at = _utc_now_iso()
+        base = self.get_zigbee_base_topic()
+        await self._record_run(
+            {
+                "id": run_id,
+                "status": "running",
+                "kind": "zigbee",
+                "ranges": [base] if base else [],
+                "devices_found": 0,
+                "started_at": started_at,
+                "finished_at": None,
+                "error": None,
+            }
+        )
+        self.hass.async_create_task(
+            self._run_zigbee_import_task(run_id, started_at)
+        )
+        return {"run_id": run_id, "status": "running", "devices_found": 0}
+
+    async def _run_zigbee_import_task(
+        self, run_id: str, started_at: str
+    ) -> None:
+        """Background Zigbee import body: fetch network map, import, record."""
+        base = self.get_zigbee_base_topic()
+        ranges = [base] if base else []
+        try:
+            nodes, _edges = await self.fetch_zigbee_networkmap()
+            await self.import_zigbee_devices(nodes)
+        except Exception as exc:  # noqa: BLE001 — record any failure, then exit
+            _LOGGER.exception("Zigbee import %s failed", run_id)
+            await self._record_run(
+                {
+                    "id": run_id,
+                    "status": "error",
+                    "kind": "zigbee",
+                    "ranges": ranges,
+                    "devices_found": 0,
+                    "started_at": started_at,
+                    "finished_at": _utc_now_iso(),
+                    "error": str(exc),
+                }
+            )
+            async_dispatcher_send(
+                self.hass,
+                SCAN_SIGNAL,
+                {"event": "scan_error", "run_id": run_id, "error": str(exc)},
+            )
+            return
+        await self._record_run(
+            {
+                "id": run_id,
+                "status": "done",
+                "kind": "zigbee",
+                "ranges": ranges,
+                "devices_found": len(nodes),
+                "started_at": started_at,
+                "finished_at": _utc_now_iso(),
+                "error": None,
+            }
+        )
+        async_dispatcher_send(
+            self.hass,
+            SCAN_SIGNAL,
+            {
+                "event": "scan_finished",
+                "run_id": run_id,
+                "devices_found": len(nodes),
+            },
+        )
+
     async def import_zigbee_devices(
         self, devices: list[dict[str, Any]]
     ) -> dict[str, int]:
@@ -980,25 +1803,52 @@ class HomelableCoordinator(DataUpdateCoordinator):
 
         Returns: ``{"added": N, "skipped": M, "refreshed": K}``.
         """
+        return await self._import_wireless_devices(
+            devices,
+            source="zigbee",
+            discovery_source="zigbee2mqtt",
+            build_props=lambda ieee, vendor, model, lqi: zigbee.build_zigbee_properties(
+                ieee, vendor, model, lqi
+            ),
+        )
+
+    async def _import_wireless_devices(
+        self,
+        devices: list[dict[str, Any]],
+        *,
+        source: str,
+        discovery_source: str,
+        build_props,
+    ) -> dict[str, int]:
+        """Push selected Zigbee/Z-Wave mesh devices into the pending store.
+
+        Shared body behind ``import_zigbee_devices`` / ``import_zwave_devices``.
+        Already-pending identities (matched by source) are skipped;
+        already-approved (on-canvas) devices have their property rows refreshed
+        (via ``build_props``) instead of being re-added.
+
+        Returns: ``{"added": N, "skipped": M, "refreshed": K}``.
+        """
         pending = await self._get_pending()
         await self._ensure_loaded()
         assert self._canvases is not None
 
-        # IEEE addresses already represented anywhere — avoid duplicates.
+        # Identities already represented anywhere — avoid duplicates.
         # Scan every design's canvas; nodes may be flat (top-level ieee_address)
-        # or nested under `data`. Map ieee -> (design_id, node) so a refresh
-        # saves the right canvas.
-        canvas_by_ieee: dict[str, tuple[str, dict[str, Any]]] = {}
+        # or nested under `data`. Map ieee -> [(design_id, node), ...]: the same
+        # device is legitimately placed on more than one canvas (one node per
+        # design), so a refresh must touch every matching node, not just one.
+        canvas_by_ieee: dict[str, list[tuple[str, dict[str, Any]]]] = {}
         for did, canvas in self._canvases.items():
             for n in canvas.get("nodes", []):
                 ieee = n.get("ieee_address") or n.get("data", {}).get("ieee_address")
                 if ieee:
-                    canvas_by_ieee[ieee] = (did, n)
+                    canvas_by_ieee.setdefault(ieee, []).append((did, n))
         on_canvas = set(canvas_by_ieee)
         already_pending = {
             d.get("data_extras", {}).get("ieee_address")
             for d in pending["devices"]
-            if d.get("source") == "zigbee"
+            if d.get("source") == source
         }
         existing = on_canvas | already_pending
 
@@ -1012,19 +1862,20 @@ class HomelableCoordinator(DataUpdateCoordinator):
             if not ieee:
                 skipped += 1
                 continue
-            # Already approved onto a canvas: refresh its IEEE/Vendor/Model/LQI
-            # props (preserving the user's visibility choices) and skip creating
-            # a pending row, so approved devices stay out of pending/hidden.
-            entry = canvas_by_ieee.get(ieee)
-            if entry is not None:
-                did, node = entry
-                props = zigbee.build_zigbee_properties(
+            # Already approved onto a canvas: refresh its property rows on
+            # *every* canvas it sits on (preserving the user's visibility
+            # choices) and skip creating a pending row, so approved devices stay
+            # out of pending/hidden.
+            matches = canvas_by_ieee.get(ieee)
+            if matches:
+                props = build_props(
                     ieee, dev.get("vendor"), dev.get("model"), dev.get("lqi")
                 )
-                node["properties"] = zigbee.merge_zigbee_properties(
-                    node.get("properties"), props
-                )
-                dirty_designs.add(did)
+                for did, node in matches:
+                    node["properties"] = zigbee.merge_zigbee_properties(
+                        node.get("properties"), props
+                    )
+                    dirty_designs.add(did)
                 refreshed += 1
                 continue
             if ieee in existing:
@@ -1040,8 +1891,8 @@ class HomelableCoordinator(DataUpdateCoordinator):
                     "open_ports": [],
                     "services": [],
                     "suggested_type": dev.get("type"),
-                    "discovery_source": "zigbee2mqtt",
-                    "source": "zigbee",
+                    "discovery_source": discovery_source,
+                    "source": source,
                     "status": "pending",
                     "discovered_at": now,
                     "data_extras": {
@@ -1063,3 +1914,569 @@ class HomelableCoordinator(DataUpdateCoordinator):
         if dirty_designs:
             await self._save_canvases()
         return {"added": added, "skipped": skipped, "refreshed": refreshed}
+
+    # ─── Z-Wave JS UI ────────────────────────────────────────────────────────
+
+    def get_zwave_config(self) -> tuple[str, str]:
+        """Return the configured (prefix, gateway_name) for Z-Wave JS UI."""
+        prefix = self.entry.options.get(
+            CONF_ZWAVE_PREFIX,
+            self.entry.data.get(CONF_ZWAVE_PREFIX, DEFAULT_ZWAVE_PREFIX),
+        )
+        gateway = self.entry.options.get(
+            CONF_ZWAVE_GATEWAY,
+            self.entry.data.get(CONF_ZWAVE_GATEWAY, DEFAULT_ZWAVE_GATEWAY),
+        )
+        return prefix, gateway
+
+    async def fetch_zwave_network(
+        self,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Trigger a Z-Wave getNodes request and return parsed (nodes, edges)."""
+        prefix, gateway = self.get_zwave_config()
+        return await zwave.fetch_zwave_network(self.hass, prefix, gateway)
+
+    async def trigger_zwave_import(self) -> dict[str, Any]:
+        """Kick off a Z-Wave import in the background. Returns immediately.
+
+        Mirrors ``trigger_zigbee_import``: records a ``kind="zwave"`` scan run
+        (running) and spawns the getNodes fetch + pending-store write so the
+        import surfaces under Scan History with a running → done transition.
+
+        Response: ``{run_id, status: "running", devices_found: 0}``.
+        """
+        run_id = uuid.uuid4().hex
+        started_at = _utc_now_iso()
+        prefix, gateway = self.get_zwave_config()
+        target = f"{prefix}/{gateway}"
+        await self._record_run(
+            {
+                "id": run_id,
+                "status": "running",
+                "kind": "zwave",
+                "ranges": [target],
+                "devices_found": 0,
+                "started_at": started_at,
+                "finished_at": None,
+                "error": None,
+            }
+        )
+        self.hass.async_create_task(
+            self._run_zwave_import_task(run_id, started_at)
+        )
+        return {"run_id": run_id, "status": "running", "devices_found": 0}
+
+    async def _run_zwave_import_task(
+        self, run_id: str, started_at: str
+    ) -> None:
+        """Background Z-Wave import body: fetch node list, import, record."""
+        prefix, gateway = self.get_zwave_config()
+        ranges = [f"{prefix}/{gateway}"]
+        try:
+            nodes, _edges = await self.fetch_zwave_network()
+            await self.import_zwave_devices(nodes)
+        except Exception as exc:  # noqa: BLE001 — record any failure, then exit
+            _LOGGER.exception("Z-Wave import %s failed", run_id)
+            await self._record_run(
+                {
+                    "id": run_id,
+                    "status": "error",
+                    "kind": "zwave",
+                    "ranges": ranges,
+                    "devices_found": 0,
+                    "started_at": started_at,
+                    "finished_at": _utc_now_iso(),
+                    "error": str(exc),
+                }
+            )
+            async_dispatcher_send(
+                self.hass,
+                SCAN_SIGNAL,
+                {"event": "scan_error", "run_id": run_id, "error": str(exc)},
+            )
+            return
+        await self._record_run(
+            {
+                "id": run_id,
+                "status": "done",
+                "kind": "zwave",
+                "ranges": ranges,
+                "devices_found": len(nodes),
+                "started_at": started_at,
+                "finished_at": _utc_now_iso(),
+                "error": None,
+            }
+        )
+        async_dispatcher_send(
+            self.hass,
+            SCAN_SIGNAL,
+            {
+                "event": "scan_finished",
+                "run_id": run_id,
+                "devices_found": len(nodes),
+            },
+        )
+
+    async def import_zwave_devices(
+        self, devices: list[dict[str, Any]]
+    ) -> dict[str, int]:
+        """Push selected Z-Wave devices into the pending store.
+
+        Each entry is a parsed node dict from ``zwave.parse_zwave_nodes``.
+        Z-Wave has no LQI, so the property builder omits that row.
+
+        Returns: ``{"added": N, "skipped": M, "refreshed": K}``.
+        """
+        return await self._import_wireless_devices(
+            devices,
+            source="zwave",
+            discovery_source="zwavejs2mqtt",
+            build_props=lambda ieee, vendor, model, lqi: zwave.build_zwave_properties(
+                ieee, vendor, model
+            ),
+        )
+
+    # ─── Proxmox VE ──────────────────────────────────────────────────────────
+
+    def _proxmox_opt(self, key: str, default: Any) -> Any:
+        return self.entry.options.get(key, self.entry.data.get(key, default))
+
+    def get_proxmox_credentials(self) -> tuple[str, str]:
+        """(token_id, token_secret) from the config entry. Never sent to clients."""
+        return (
+            str(self._proxmox_opt(CONF_PROXMOX_TOKEN_ID, "") or ""),
+            str(self._proxmox_opt(CONF_PROXMOX_TOKEN_SECRET, "") or ""),
+        )
+
+    def get_proxmox_sync_enabled(self) -> bool:
+        return bool(
+            self._proxmox_opt(CONF_PROXMOX_SYNC_ENABLED, DEFAULT_PROXMOX_SYNC_ENABLED)
+        )
+
+    def get_proxmox_sync_interval(self) -> int:
+        """Auto-sync interval in seconds, floored at MIN_PROXMOX_SYNC_INTERVAL."""
+        try:
+            raw = int(
+                self._proxmox_opt(
+                    CONF_PROXMOX_SYNC_INTERVAL, DEFAULT_PROXMOX_SYNC_INTERVAL
+                )
+            )
+        except (TypeError, ValueError):
+            return DEFAULT_PROXMOX_SYNC_INTERVAL
+        return max(MIN_PROXMOX_SYNC_INTERVAL, raw)
+
+    def get_proxmox_config(self) -> dict[str, Any]:
+        """Non-secret Proxmox config for the panel. Never includes the token —
+        only whether one is configured (``token_configured``)."""
+        token_id, token_secret = self.get_proxmox_credentials()
+        return {
+            "host": str(self._proxmox_opt(CONF_PROXMOX_HOST, "") or ""),
+            "port": int(self._proxmox_opt(CONF_PROXMOX_PORT, DEFAULT_PROXMOX_PORT)),
+            "verify_tls": bool(
+                self._proxmox_opt(CONF_PROXMOX_VERIFY_TLS, DEFAULT_PROXMOX_VERIFY_TLS)
+            ),
+            "sync_enabled": self.get_proxmox_sync_enabled(),
+            "sync_interval": self.get_proxmox_sync_interval(),
+            "token_configured": bool(token_id and token_secret),
+        }
+
+    def resolve_proxmox_request(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        token_id: str | None = None,
+        token_secret: str | None = None,
+        verify_tls: bool | None = None,
+    ) -> dict[str, Any]:
+        """Merge a request's connection params over the configured defaults.
+
+        A blank token in the request falls back to the entry-stored credential —
+        the HA-native analogue of the standalone env-token fallback, so the panel
+        never has to hold the secret. Raises ``ValueError`` when no host/token can
+        be resolved.
+        """
+        cfg = self.get_proxmox_config()
+        cfg_id, cfg_secret = self.get_proxmox_credentials()
+        resolved = {
+            "host": host or cfg["host"],
+            "port": int(port or cfg["port"]),
+            "token_id": token_id or cfg_id,
+            "token_secret": token_secret or cfg_secret,
+            "verify_tls": cfg["verify_tls"] if verify_tls is None else bool(verify_tls),
+        }
+        if not resolved["host"]:
+            raise ValueError("No Proxmox host provided or configured.")
+        if not resolved["token_id"] or not resolved["token_secret"]:
+            raise ValueError(
+                "No Proxmox API token provided or configured on the integration."
+            )
+        return resolved
+
+    def _canvas_index_by_mac(self) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        by_mac: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        for did, canvas in (self._canvases or {}).items():
+            for n in canvas.get("nodes", []):
+                data = n.get("data") or {}
+                mac = proxmox.normalize_mac(n.get("mac") or data.get("mac"))
+                if mac:
+                    by_mac.setdefault(mac, []).append((did, n))
+        return by_mac
+
+    async def import_proxmox_pending(
+        self,
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]],
+        cluster_pairs: list[tuple[str, str]] | None = None,
+    ) -> dict[str, int]:
+        """Upsert a fetched Proxmox inventory into the pending store.
+
+        Two-tier identity (order matters), mirroring the standalone importer:
+          1. Match a device already on a canvas by ieee OR ip OR MAC (the
+             cross-source key — a stopped VM has no IP but its NIC MAC matches an
+             ARP-scanned node). Refresh its property rows in place and keep an
+             inventory row so it stays listed.
+          2. Else upsert the pending inventory row, merging onto a scanned row of
+             the same device when one exists (union discovery sources).
+
+        Host→guest and host↔host relationships are recorded on each pending
+        device's ``data_extras`` (``proxmox_parent`` / ``cluster_peers``) and
+        materialized as ``virtual`` / ``cluster`` edges on approve.
+
+        Returns ``{"created": N, "updated": M, "device_count": K}``.
+        """
+        cluster_pairs = cluster_pairs or []
+        await self._ensure_loaded()
+        pending = await self._get_pending()
+
+        guest_parent = {e["target"]: e["source"] for e in edges}
+        # Directed cluster links: a pair (a, b) is rendered a.right -> b.left, so
+        # direction must survive to approve time. Both endpoints carry the same
+        # link dict; whichever host is approved second materializes the edge.
+        # Using the direction (not a symmetric peer list) keeps a middle host a
+        # target on its LEFT handle and a source on its RIGHT handle — a real
+        # chain instead of both edges leaving the same handle.
+        peers_by_ieee: dict[str, list[str]] = {}
+        links_by_ieee: dict[str, list[dict[str, str]]] = {}
+        for a, b in cluster_pairs:
+            peers_by_ieee.setdefault(a, []).append(b)
+            peers_by_ieee.setdefault(b, []).append(a)
+            link = {"source": a, "target": b}
+            links_by_ieee.setdefault(a, []).append(link)
+            links_by_ieee.setdefault(b, []).append(link)
+        cluster_members = set(peers_by_ieee)
+
+        by_ip, _, by_ieee = self._canvas_node_index()
+        by_mac = self._canvas_index_by_mac()
+
+        def _find_pending(
+            ieee: str, ip: str | None, mac: str | None
+        ) -> dict[str, Any] | None:
+            for d in pending["devices"]:
+                if (d.get("data_extras") or {}).get("ieee_address") == ieee:
+                    return d
+                if ip and d.get("ip") == ip:
+                    return d
+                if mac and proxmox.normalize_mac(d.get("mac")) == mac:
+                    return d
+            return None
+
+        def _sources_after_merge(row: dict[str, Any]) -> list[str]:
+            # Compute BEFORE the pve ieee is adopted, so the pre-merge origin is
+            # visible. Preserve a scanned row's IP-source tag (incl. legacy rows
+            # with no discovery_sources) so it survives the Proxmox merge.
+            sources = _add_source(row.get("discovery_sources"), row.get("discovery_source"))
+            was_scanned = not str(
+                (row.get("data_extras") or {}).get("ieee_address") or ""
+            ).startswith("pve-")
+            if (
+                was_scanned
+                and row.get("ip")
+                and not any(s in ("arp", "mdns", "tcp") for s in sources)
+            ):
+                sources = _add_source(sources, "arp")
+            return _add_source(sources, PROXMOX_SOURCE)
+
+        created = 0
+        updated = 0
+        now = _utc_now_iso()
+        dirty_designs: set[str] = set()
+        pending_dirty = False
+
+        for n in nodes:
+            ieee = n.get("ieee_address")
+            if not ieee:
+                continue
+            ip = n.get("ip")
+            mac = proxmox.normalize_mac(n.get("mac"))
+            props = proxmox.build_proxmox_properties(n)
+            extras = {
+                "ieee_address": ieee,
+                "friendly_name": n.get("label"),
+                "vendor": n.get("vendor"),
+                "model": n.get("model"),
+                "proxmox_parent": guest_parent.get(ieee),
+                "cluster_peers": peers_by_ieee.get(ieee, []),
+                "cluster_links": links_by_ieee.get(ieee, []),
+            }
+
+            # 1) Already on a canvas — refresh in place, don't duplicate.
+            matches: list[tuple[str, dict[str, Any]]] = []
+            seen_ids: set[int] = set()
+            for bucket in (
+                by_ieee.get(ieee, []),
+                by_ip.get(ip, []) if ip else [],
+                by_mac.get(mac, []) if mac else [],
+            ):
+                for did, cnode in bucket:
+                    if id(cnode) in seen_ids:
+                        continue
+                    seen_ids.add(id(cnode))
+                    matches.append((did, cnode))
+            if matches:
+                for did, cnode in matches:
+                    cnode["properties"] = zigbee.merge_zigbee_properties(
+                        cnode.get("properties"), props
+                    )
+                    cdata = cnode.get("data") or {}
+                    if not (cnode.get("ieee_address") or cdata.get("ieee_address")):
+                        cnode["ieee_address"] = ieee
+                    if ip and not cnode.get("ip"):
+                        cnode["ip"] = ip
+                    if mac and not cnode.get("mac"):
+                        cnode["mac"] = mac
+                    if not cnode.get("hostname"):
+                        cnode["hostname"] = n.get("hostname")
+                    if ieee in cluster_members:
+                        cnode["left_handles"] = max(int(cnode.get("left_handles") or 0), 1)
+                        cnode["right_handles"] = max(int(cnode.get("right_handles") or 0), 1)
+                    dirty_designs.add(did)
+                # Keep an inventory row (approved) so the device stays listed.
+                inv = _find_pending(ieee, ip, mac)
+                if inv is None:
+                    pending["devices"].append(
+                        self._new_proxmox_pending(ieee, ip, mac, n, props, extras, "approved", now)
+                    )
+                else:
+                    inv["discovery_sources"] = _sources_after_merge(inv)
+                    self._refresh_proxmox_pending(inv, ieee, ip, mac, n, props, extras)
+                pending_dirty = True
+                updated += 1
+                continue
+
+            # 2) Not on a canvas — upsert the pending inventory row.
+            existing = _find_pending(ieee, ip, mac)
+            if existing is None:
+                pending["devices"].append(
+                    self._new_proxmox_pending(ieee, ip, mac, n, props, extras, "pending", now)
+                )
+                created += 1
+            else:
+                existing["discovery_sources"] = _sources_after_merge(existing)
+                self._refresh_proxmox_pending(existing, ieee, ip, mac, n, props, extras)
+                if existing.get("status") == "approved":
+                    # Approved earlier but the canvas node is gone — revive it.
+                    existing["status"] = "pending"
+                updated += 1
+            pending_dirty = True
+
+        if pending_dirty:
+            await self._save_pending()
+        if dirty_designs:
+            await self._save_canvases()
+        return {"created": created, "updated": updated, "device_count": len(nodes)}
+
+    @staticmethod
+    def _new_proxmox_pending(
+        ieee: str,
+        ip: str | None,
+        mac: str | None,
+        n: dict[str, Any],
+        props: list[dict[str, Any]],
+        extras: dict[str, Any],
+        status: str,
+        now: str,
+    ) -> dict[str, Any]:
+        return {
+            "id": f"pd-{uuid.uuid4().hex[:8]}",
+            "ip": ip,
+            "mac": mac,
+            "hostname": n.get("hostname"),
+            "os": None,
+            "open_ports": [],
+            "services": [],
+            "suggested_type": n.get("type"),
+            "discovery_source": PROXMOX_SOURCE,
+            "discovery_sources": [PROXMOX_SOURCE],
+            "source": PROXMOX_SOURCE,
+            "status": status,
+            "discovered_at": now,
+            "properties": props,
+            "data_extras": dict(extras),
+        }
+
+    @staticmethod
+    def _refresh_proxmox_pending(
+        row: dict[str, Any],
+        ieee: str,
+        ip: str | None,
+        mac: str | None,
+        n: dict[str, Any],
+        props: list[dict[str, Any]],
+        extras: dict[str, Any],
+    ) -> None:
+        """Merge a re-imported Proxmox device onto an existing inventory row.
+
+        ``discovery_sources`` must already have been recomputed by the caller
+        (it needs the pre-merge origin, before the pve ieee is adopted here).
+        """
+        de = row.setdefault("data_extras", {})
+        if not de.get("ieee_address"):
+            de["ieee_address"] = ieee
+        de["proxmox_parent"] = extras.get("proxmox_parent") or de.get("proxmox_parent")
+        de["cluster_peers"] = extras.get("cluster_peers") or de.get("cluster_peers") or []
+        de["cluster_links"] = extras.get("cluster_links") or de.get("cluster_links") or []
+        for key in ("friendly_name", "vendor", "model"):
+            if extras.get(key) and not de.get(key):
+                de[key] = extras[key]
+        row["ip"] = row.get("ip") or ip
+        row["mac"] = row.get("mac") or mac
+        row["hostname"] = row.get("hostname") or n.get("hostname")
+        row["suggested_type"] = row.get("suggested_type") or n.get("type")
+        row["source"] = row.get("source") or PROXMOX_SOURCE
+        row["properties"] = zigbee.merge_zigbee_properties(row.get("properties"), props)
+
+    async def trigger_proxmox_import(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        token_id: str | None = None,
+        token_secret: str | None = None,
+        verify_tls: bool | None = None,
+    ) -> dict[str, Any]:
+        """Kick off a Proxmox import in the background (kind="proxmox").
+
+        Records a running scan run and spawns the fetch + pending-store write, so
+        the import surfaces under Scan History with a live running → done
+        transition (mirroring IP scans and mesh imports). Blank connection params
+        fall back to the configured defaults. Returns
+        ``{run_id, status: "running", devices_found: 0}``.
+
+        Raises ``ValueError`` when no host/token can be resolved.
+        """
+        req = self.resolve_proxmox_request(
+            host, port, token_id, token_secret, verify_tls
+        )
+        run_id = uuid.uuid4().hex
+        started_at = _utc_now_iso()
+        await self._record_run(
+            {
+                "id": run_id,
+                "status": "running",
+                "kind": "proxmox",
+                "ranges": [f"{req['host']}:{req['port']}"],
+                "devices_found": 0,
+                "started_at": started_at,
+                "finished_at": None,
+                "error": None,
+            }
+        )
+        self.hass.async_create_task(
+            self._run_proxmox_import_task(run_id, started_at, req)
+        )
+        return {"run_id": run_id, "status": "running", "devices_found": 0}
+
+    async def _run_proxmox_import_task(
+        self, run_id: str, started_at: str, req: dict[str, Any]
+    ) -> None:
+        """Background Proxmox import body: fetch inventory, upsert, record."""
+        ranges = [f"{req['host']}:{req['port']}"]
+        try:
+            nodes, edges = await proxmox.fetch_proxmox_inventory(
+                self.hass,
+                req["host"],
+                req["port"],
+                req["token_id"],
+                req["token_secret"],
+                req["verify_tls"],
+            )
+            cluster_pairs = proxmox.build_proxmox_cluster_links(nodes)
+            await self.import_proxmox_pending(nodes, edges, cluster_pairs)
+        except Exception as exc:  # noqa: BLE001 — record any failure, then exit
+            _LOGGER.exception("Proxmox import %s failed", run_id)
+            await self._record_run(
+                {
+                    "id": run_id,
+                    "status": "error",
+                    "kind": "proxmox",
+                    "ranges": ranges,
+                    "devices_found": 0,
+                    "started_at": started_at,
+                    "finished_at": _utc_now_iso(),
+                    "error": str(exc)[:500],
+                }
+            )
+            async_dispatcher_send(
+                self.hass,
+                SCAN_SIGNAL,
+                {"event": "scan_error", "run_id": run_id, "error": str(exc)[:500]},
+            )
+            return
+        # A done run carrying a non-fatal advisory (hosts imported, no guests
+        # visible) renders amber in Scan History, distinct from a red failure.
+        advisory = proxmox.guest_visibility_advisory(nodes)
+        await self._record_run(
+            {
+                "id": run_id,
+                "status": "done",
+                "kind": "proxmox",
+                "ranges": ranges,
+                "devices_found": len(nodes),
+                "started_at": started_at,
+                "finished_at": _utc_now_iso(),
+                "error": advisory,
+            }
+        )
+        async_dispatcher_send(
+            self.hass,
+            SCAN_SIGNAL,
+            {
+                "event": "scan_finished",
+                "run_id": run_id,
+                "devices_found": len(nodes),
+            },
+        )
+
+    @callback
+    def async_start_proxmox_sync(self) -> None:
+        """Schedule the periodic Proxmox auto-sync job if enabled + configured.
+
+        Reload on options change recreates the coordinator, so the interval and
+        enable flag are always picked up fresh — no live reschedule needed.
+        """
+        if not self.get_proxmox_sync_enabled():
+            return
+        token_id, token_secret = self.get_proxmox_credentials()
+        if not (self.get_proxmox_config()["host"] and token_id and token_secret):
+            _LOGGER.warning(
+                "Proxmox auto-sync enabled but host/token not fully configured; "
+                "skipping schedule"
+            )
+            return
+        interval = timedelta(seconds=self.get_proxmox_sync_interval())
+        self._proxmox_sync_unsub = async_track_time_interval(
+            self.hass, self._run_proxmox_sync, interval
+        )
+        _LOGGER.debug("Proxmox auto-sync every %ds", self.get_proxmox_sync_interval())
+
+    @callback
+    def async_stop_proxmox_sync(self) -> None:
+        """Cancel the periodic Proxmox auto-sync job, if running."""
+        if self._proxmox_sync_unsub is not None:
+            self._proxmox_sync_unsub()
+            self._proxmox_sync_unsub = None
+
+    async def _run_proxmox_sync(self, _now: datetime | None = None) -> None:
+        try:
+            await self.trigger_proxmox_import()
+        except Exception as exc:  # noqa: BLE001 — never let the timer die
+            _LOGGER.debug("Proxmox auto-sync skipped: %s", exc)

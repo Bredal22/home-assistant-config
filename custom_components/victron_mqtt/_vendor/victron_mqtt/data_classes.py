@@ -35,6 +35,19 @@ class TopicDependency:
     required: bool = True
 
 
+@dataclass(frozen=True)
+class ProductCapabilityRef:
+    """Reference resolving a range value (min/max/step) from a product capability.
+
+    When used as a ``min``/``max``/``step`` on a :class:`TopicDescriptor`, the
+    value is looked up per-device from the product capability table (keyed by the
+    device's product ID). If the product is unknown, ``default`` is used.
+    """
+
+    capability: str
+    default: float | int | None = None
+
+
 def topic_to_device_type(topic_parts: list[str]) -> DeviceType | None:
     """Extract the device type from the topic."""
     if topic_parts[0] == "$$func":
@@ -67,15 +80,15 @@ class TopicDescriptor:
     precision: int | None = None
     enum: type[VictronEnum] | None = None
     min_max_range: RangeType = RangeType.STATIC
-    min: float | int | str | None = None
-    max: float | int | str | None = None
-    step: float | int | str | None = None
+    min: float | int | str | ProductCapabilityRef | None = None
+    max: float | int | str | ProductCapabilityRef | None = None
+    step: float | int | str | ProductCapabilityRef | None = None
     is_adjustable_suffix: str | None = None
     output_type: int | str | None = (
         None  # SwitchableOutput type (static or metric reference). When 6 (dropdown), labels are used.
     )
     labels: str | None = None  # JSON labels metric reference (format: 'metric_id:default')
-    key_values: dict[str, str] = field(default_factory=dict)
+    key_values: dict[str, str] = field(default_factory=dict[str, str])
     experimental: bool = False
     # Depends on format is different for regular and formula topics:
     # For regular topics, the depends_on list contains the {device_id}_{metric_short_id} of the metric it depends on
@@ -406,7 +419,7 @@ class ParsedTopic:
         self._key_values = self.get_key_values(topic_desc)
         self._key_values.update(topic_desc.key_values)
         self._short_id = self._replace_ids(topic_desc.short_id).lower()
-        effective_device_id = device_unique_id if device_unique_id else self.get_device_unique_id()
+        effective_device_id = device_unique_id or self.get_device_unique_id()
         self._unique_id = ParsedTopic.make_unique_id(effective_device_id, self._short_id)
         assert topic_desc.name is not None, f"TopicDescriptor name is None for topic: {topic_desc.topic}"
         self._name = self._replace_ids(topic_desc.name)
@@ -455,27 +468,6 @@ class ParsedTopic:
         """Get the unique id of the ParsedTopic."""
         assert self._unique_id is not None, f"unique_id is None for topic: {self.full_topic}"
         return self._unique_id
-
-    @property
-    def display_id(self) -> str:
-        """Get a display identifier with the device-type prefix de-duplicated.
-
-        The ``unique_id`` has a known formatting quirk: when ``short_id`` already
-        starts with the device-type prefix (e.g. ``solarcharger_total_pv_yield``
-        under device ``solarcharger_3``), the resulting id contains the prefix
-        twice — ``solarcharger_3_solarcharger_total_pv_yield``.  ``display_id``
-        strips the redundant leading prefix, yielding ``solarcharger_3_total_pv_yield``.
-
-        ``unique_id`` is intentionally left unchanged for backward compatibility
-        with existing consumers.  ``display_id`` is provided for new consumers
-        that can adopt the cleaner form going forward.
-        """
-        assert self._short_id is not None, f"short_id is None for topic: {self.full_topic}"
-        device_prefix = f"{self.device_type.code}_"
-        short = self._short_id
-        if short.startswith(device_prefix):
-            short = short[len(device_prefix):]
-        return ParsedTopic.make_unique_id(self.get_device_unique_id(), short)
 
     @property
     def key_values(self) -> dict[str, str]:

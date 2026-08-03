@@ -1,0 +1,17 @@
+{
+  "domain": "pollen_dk",
+  "name": "Pollen DK (Astma-Allergi Danmark)",
+  "codeowners": [
+    "@briis"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "lovelace"
+  ],
+  "documentation": "https://github.com/briis/pollen_dk",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/briis/pollen_dk/issues",
+  "requirements": [],
+  "version": "1.1.5"
+}

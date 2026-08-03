@@ -6,6 +6,17 @@
       "unknown": "Unknown failure"
     },
     "step": {
+      "ssdp_auth": {
+        "data": {
+          "password": "Password",
+          "ssl": "Use SSL",
+          "username": "Username"
+        },
+        "description": "Authentication is required for {host}."
+      },
+      "ssdp_confirm": {
+        "description": "Do you want to set up {name}?"
+      },
       "user": {
         "data": {
           "elevated_tracing": "Elevate tracing for topic",
@@ -17,7 +28,8 @@
           "root_topic_prefix": "Optional root topic prefix",
           "simple_naming": "Simple naming (no installation id in entity ids)",
           "ssl": "Use SSL",
-          "update_frequency": "Update frequency (seconds)",
+          "update_frequency": "Manual update frequency (seconds)",
+          "update_frequency_mode": "Update frequency mode",
           "username": "Username"
         },
         "data_description": {
@@ -30,7 +42,8 @@
           "root_topic_prefix": "Root topic prefix if used via MQTT gateway.",
           "simple_naming": "Use simple naming for entities, can work only when you have single Cerbo on the network.",
           "ssl": "Indicates whether to use SSL to connect to the Victron Device. Normally it is disabled.",
-          "update_frequency": "Update frequency in seconds. Default is 30 seconds. Set to 0 to update always.",
+          "update_frequency": "Only used in 'Manual' mode. Update frequency in seconds. Set to 0 to update always.",
+          "update_frequency_mode": "'Auto' lets the library choose an update interval per metric (fast-changing values like power update more often). 'Manual' uses the fixed interval below for all metrics.",
           "username": "Username for the MQTT server, default is empty. Not needed by Victron devices. This is only needed if you use route your mqtt messages through non Victron server and it does require username."
         }
       }
@@ -336,6 +349,13 @@
           "on": "On"
         }
       },
+      "vebus_hub4_disable_charge": {
+        "name": "Hub4 disable charge",
+        "state": {
+          "off": "Off",
+          "on": "On"
+        }
+      },
       "vebus_hub4_do_not_feed_in_overvoltage": {
         "name": "Hub4 do not feed in on overvoltage",
         "state": {
@@ -560,6 +580,13 @@
           "passthrough": "Passthrough"
         }
       },
+      "battery_bms_mode": {
+        "state": {
+          "off": "Off",
+          "on": "On",
+          "standby": "Standby"
+        }
+      },
       "evcharger_mode": {
         "name": "Mode",
         "state": {
@@ -763,6 +790,13 @@
           "alarm": "Alarm",
           "no_alarm": "No alarm",
           "warning": "Warning"
+        }
+      },
+      "battery_bms_mode": {
+        "state": {
+          "off": "Off",
+          "on": "On",
+          "standby": "Standby"
         }
       },
       "battery_capacity": {
@@ -1890,6 +1924,9 @@
           "sustain_alt": "Sustain alt"
         }
       },
+      "solarcharger_temperature": {
+        "name": "Temperature"
+      },
       "solarcharger_time_in_absorption_today": {
         "name": "Time in absorption today"
       },
@@ -1898,6 +1935,9 @@
       },
       "solarcharger_time_in_float_today": {
         "name": "Time in float today"
+      },
+      "solarcharger_total_pv_yield_system": {
+        "name": "Total PV yield system"
       },
       "solarcharger_tracker_tracker_current": {
         "name": "PV tracker {tracker} current"
@@ -2238,6 +2278,16 @@
       },
       "system_heartbeat": {
         "name": "GX system heartbeat"
+      },
+      "system_pv_on_grid_current_phase": {
+        "name": "PV on grid current {phase}"
+      },
+      "system_pv_on_grid_phases": {
+        "name": "PV on grid phases",
+        "unit_of_measurement": "phases"
+      },
+      "system_pv_on_grid_power_phase": {
+        "name": "PV on grid power {phase}"
       },
       "system_pv_on_output_current_phase": {
         "name": "PV on output current {phase}"
@@ -2775,6 +2825,13 @@
           "on": "On"
         }
       },
+      "vebus_hub4_disable_charge": {
+        "name": "Hub4 disable charge",
+        "state": {
+          "off": "Off",
+          "on": "On"
+        }
+      },
       "vebus_hub4_do_not_feed_in_overvoltage": {
         "name": "Hub4 do not feed in on overvoltage",
         "state": {
@@ -2854,7 +2911,8 @@
           "root_topic_prefix": "Optional root topic prefix",
           "simple_naming": "Simple naming (no installation id in entity ids)",
           "ssl": "Use SSL",
-          "update_frequency": "Update frequency (seconds)",
+          "update_frequency": "Manual update frequency (seconds)",
+          "update_frequency_mode": "Update frequency mode",
           "username": "Username"
         },
         "data_description": {
@@ -2867,7 +2925,8 @@
           "root_topic_prefix": "Root topic prefix if used via MQTT gateway.",
           "simple_naming": "Use simple naming for entities, can work only when you have single Cerbo on the network.",
           "ssl": "Indicates whether to use SSL to connect to the Victron Device. Normally it is disabled.",
-          "update_frequency": "Update frequency in seconds. Default is 30 seconds. Set to 0 to update always.",
+          "update_frequency": "Only used in 'Manual' mode. Update frequency in seconds. Set to 0 to update always.",
+          "update_frequency_mode": "'Auto' lets the library choose an update interval per metric (fast-changing values like power update more often). 'Manual' uses the fixed interval below for all metrics.",
           "username": "Username for the MQTT server, default is empty. Not needed by Victron devices. This is only needed if you use route your mqtt messages through non Victron server and it does require username."
         }
       }

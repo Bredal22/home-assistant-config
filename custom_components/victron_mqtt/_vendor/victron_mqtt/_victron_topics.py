@@ -8,6 +8,7 @@ from ._victron_enums import (
     ACSystemMode,
     ActiveInputEnum,
     BatteryState,
+    BMSMode,
     ChargerMode,
     ChargeSchedule,
     DESSErrorCode,
@@ -45,7 +46,7 @@ from ._victron_enums import (
     VrmPortalMode,
 )
 from .constants import MetricKind, MetricNature, MetricType, RangeType, ValueType
-from .data_classes import TopicDependency, TopicDescriptor
+from .data_classes import ProductCapabilityRef, TopicDependency, TopicDescriptor
 
 # Good sources for topics is:
 # https://github.com/victronenergy/venus/wiki/dbus
@@ -110,7 +111,7 @@ topics: list[TopicDescriptor] = [
         topic="N/{installation_id}/{device_type}/{device_id}/ProductId",
         message_type=MetricKind.ATTRIBUTE,
         short_id="victron_productid",
-        value_type=ValueType.STRING,
+        value_type=ValueType.INT,
     ),
     TopicDescriptor(
         topic="N/{installation_id}/{device_type}/{device_id}/ProductName",
@@ -258,8 +259,9 @@ topics: list[TopicDescriptor] = [
         short_id="alternator_charge_current_limit",
         name="Charge current limit",
         metric_type=MetricType.CURRENT,
+        min_max_range=RangeType.DYNAMIC,  # prefer the GX-reported max, then the product table, then 200
         min=0,
-        max=200,
+        max=ProductCapabilityRef("max_charge_current", 200),
     ),
     TopicDescriptor(
         topic="N/{installation_id}/alternator/{device_id}/State",
@@ -624,6 +626,15 @@ topics: list[TopicDescriptor] = [
         name="Allow to discharge",
         value_type=ValueType.ENUM,
         enum=GenericOnOff,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/battery/{device_id}/Mode",
+        message_type=MetricKind.SELECT,
+        short_id="battery_bms_mode",
+        name="BMS mode",
+        value_type=ValueType.ENUM,
+        enum=BMSMode,
+        main_topic=True,
     ),
     TopicDescriptor(
         topic="N/{installation_id}/battery/{device_id}/Soc",
@@ -1034,10 +1045,14 @@ topics: list[TopicDescriptor] = [
     ),
     TopicDescriptor(
         topic="N/{installation_id}/ev/{device_id}/ChargingStarted",
+        depends_on=[
+            "ev_{device_id}_ev_charging_state"
+        ],  # This is just so this topic will not show up with the default value if there is no EV charger at all
         message_type=MetricKind.SENSOR,
         short_id="ev_charging_started",
         name="Charging started",
         metric_type=MetricType.TIMESTAMP,
+        value_type=ValueType.EPOCH_DEFAULT_NA,
     ),
     TopicDescriptor(
         topic="N/{installation_id}/ev/{device_id}/ChargingState",
@@ -2006,6 +2021,7 @@ topics: list[TopicDescriptor] = [
         short_id="multi_ess_ac_power_setpoint",
         name="ESS AC power setpoint",
         metric_type=MetricType.POWER,
+        value_type=ValueType.INT_DEFAULT_0,
     ),
     TopicDescriptor(
         topic="N/{installation_id}/multi/{device_id}/Ess/DisableCharge",
@@ -2744,6 +2760,13 @@ topics: list[TopicDescriptor] = [
         metric_type=MetricType.CURRENT,
     ),
     TopicDescriptor(
+        topic="N/{installation_id}/solarcharger/{device_id}/Dc/0/Temperature",
+        message_type=MetricKind.SENSOR,
+        short_id="solarcharger_temperature",
+        name="Temperature",
+        metric_type=MetricType.TEMPERATURE,
+    ),
+    TopicDescriptor(
         topic="N/{installation_id}/solarcharger/{device_id}/Dc/0/Voltage",
         message_type=MetricKind.SENSOR,
         short_id="solarcharger_dc_voltage",
@@ -2949,8 +2972,9 @@ topics: list[TopicDescriptor] = [
         short_id="solarcharger_charge_current_limit",
         name="Charge current limit",
         metric_type=MetricType.CURRENT,
+        min_max_range=RangeType.DYNAMIC,  # prefer the GX-reported max, then the product table, then 200
         min=0,
-        max=200,
+        max=ProductCapabilityRef("max_charge_current", 200),
     ),
     TopicDescriptor(
         topic="N/{installation_id}/solarcharger/{device_id}/State",
@@ -2975,6 +2999,14 @@ topics: list[TopicDescriptor] = [
         metric_type=MetricType.CURRENT,
         precision=2,
         depends_on=["solarcharger_yield_power", "solarcharger_voltage"],
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/solarcharger/{device_id}/Yield/System",
+        message_type=MetricKind.SENSOR,
+        short_id="solarcharger_total_pv_yield_system",
+        name="Total PV yield system",
+        metric_type=MetricType.ENERGY,
+        precision=2,
     ),
     TopicDescriptor(
         topic="N/{installation_id}/solarcharger/{device_id}/Yield/User",
@@ -3144,6 +3176,28 @@ topics: list[TopicDescriptor] = [
         message_type=MetricKind.SENSOR,
         short_id="system_grid_power_{phase}",
         name="Grid power {phase}",
+        metric_type=MetricType.POWER,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/system/{device_id}/Ac/PvOnGrid/NumberOfPhases",
+        message_type=MetricKind.SENSOR,
+        short_id="system_pv_on_grid_phases",
+        name="PV on grid phases",
+        value_type=ValueType.INT,
+        unit_of_measurement="phases",
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/system/{device_id}/Ac/PvOnGrid/{phase}/Current",
+        message_type=MetricKind.SENSOR,
+        short_id="system_pv_on_grid_current_{phase}",
+        name="PV on grid current {phase}",
+        metric_type=MetricType.CURRENT,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/system/{device_id}/Ac/PvOnGrid/{phase}/Power",
+        message_type=MetricKind.SENSOR,
+        short_id="system_pv_on_grid_power_{phase}",
+        name="PV on grid power {phase}",
         metric_type=MetricType.POWER,
     ),
     TopicDescriptor(
@@ -3893,6 +3947,14 @@ topics: list[TopicDescriptor] = [
         short_id="vebus_energy_out_to_inverter",
         name="Energy from out to inverter",
         metric_type=MetricType.ENERGY,
+    ),
+    TopicDescriptor(
+        topic="N/{installation_id}/vebus/{device_id}/Hub4/DisableCharge",
+        message_type=MetricKind.SWITCH,
+        short_id="vebus_hub4_disable_charge",
+        name="Hub4 disable charge",
+        value_type=ValueType.ENUM,
+        enum=GenericOnOff,
     ),
     TopicDescriptor(
         topic="N/{installation_id}/vebus/{device_id}/Hub4/DoNotFeedInOvervoltage",

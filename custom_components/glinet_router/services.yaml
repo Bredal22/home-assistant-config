@@ -1,0 +1,602 @@
+send_sms:
+  name: Send SMS
+  description: Send a text message through a GL.iNet router with SMS support.
+  fields:
+    recipient:
+      selector:
+        text:
+      required: true
+      example: "1234567890"
+    text:
+      selector:
+        text:
+          multiline: true
+      required: true
+      example: "Router test message"
+
+refresh_clients:
+  name: Refresh clients
+  description: Refresh tracked clients and clear the router client cache when supported.
+  fields:
+    mac:
+      selector:
+        text:
+      required: false
+
+get_sms:
+  name: Get SMS messages
+  description: Retrieve all SMS messages from the router. Returns message list in action response.
+  fields:
+    mac:
+      selector:
+        text:
+      required: false
+
+remove_sms:
+  name: Remove SMS
+  description: Deletes SMS messages from the router.
+  fields:
+    scope:
+      name: Scope
+      description: "The range of SMS to remove (10: Single message, 11: All, 0: All unread, 1: All read, 2: All sent, 12: All received)."
+      selector:
+        number:
+          min: 0
+          max: 13
+          mode: box
+      required: true
+      default: 10
+    message_id:
+      name: Message ID
+      description: The unique identifier for the SMS (required for scope 10).
+      selector:
+        text:
+
+scan_wifi:
+  name: Scan WiFi networks
+  description: Scan for available WiFi networks to connect in repeater mode. Returns network list in action response.
+  fields:
+    mac:
+      name: Router MAC
+      description: Target router MAC address (optional if only one router configured).
+      selector:
+        text:
+      required: false
+    all_band:
+      name: All bands
+      description: Compatibility option. Requests a fresh router scan.
+      selector:
+        boolean:
+      required: false
+      default: false
+    dfs:
+      name: Include DFS
+      description: Compatibility option. Requests a fresh router scan.
+      selector:
+        boolean:
+      required: false
+      default: false
+    refresh:
+      name: Refresh
+      description: Force a fresh router scan instead of using cached scan results.
+      selector:
+        boolean:
+      required: false
+      default: false
+
+connect_wifi:
+  name: Connect to WiFi
+  description: Connect to an open or secured external WiFi network in repeater mode.
+  fields:
+    mac:
+      name: Router MAC
+      description: Target router MAC address (optional if only one router configured).
+      selector:
+        text:
+      required: false
+    ssid:
+      name: SSID
+      description: The network name to connect to.
+      selector:
+        text:
+      required: true
+      example: "CampgroundWiFi"
+    password:
+      name: Password
+      description: The network password. Required for secured networks; leave empty for open networks.
+      selector:
+        text:
+          type: password
+      required: false
+    remember:
+      name: Remember network
+      description: Save network credentials for auto-reconnect.
+      selector:
+        boolean:
+      required: false
+      default: true
+    bssid:
+      name: BSSID
+      description: Lock connection to specific access point MAC address.
+      selector:
+        text:
+      required: false
+
+disconnect_wifi:
+  name: Disconnect WiFi
+  description: Disconnect from the current external WiFi network.
+  fields:
+    mac:
+      name: Router MAC
+      description: Target router MAC address (optional if only one router configured).
+      selector:
+        text:
+      required: false
+
+get_saved_networks:
+  name: Get saved networks
+  description: Get list of saved WiFi networks for repeater mode. Returns network list in action response.
+  fields:
+    mac:
+      name: Router MAC
+      description: Target router MAC address (optional if only one router configured).
+      selector:
+        text:
+      required: false
+
+remove_saved_network:
+  name: Remove saved network
+  description: Remove a saved WiFi network from the router.
+  fields:
+    mac:
+      name: Router MAC
+      description: Target router MAC address (optional if only one router configured).
+      selector:
+        text:
+      required: false
+    ssid:
+      name: SSID
+      description: The network name to remove.
+      selector:
+        text:
+      required: true
+
+set_fan_temperature:
+  name: Set fan threshold temperature
+  description: Set the temperature threshold at which the fan should start running.
+  fields:
+    mac:
+      name: Router MAC
+      description: Target router MAC address (optional).
+      selector:
+        text:
+      required: false
+    temperature:
+      name: Threshold temperature
+      description: Trigger temperature in Celsius (70-90).
+      selector:
+        number:
+          min: 70
+          max: 90
+          unit_of_measurement: "°C"
+          mode: slider
+      required: true
+      example: 75
+
+add_firewall_rule:
+  name: Add firewall rule
+  description: Add a custom firewall rule to the router.
+  fields:
+    mac:
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    src:
+      selector:
+        text:
+    src_ip:
+      selector:
+        text:
+    src_mac:
+      selector:
+        text:
+    src_port:
+      selector:
+        text:
+    proto:
+      selector:
+        text:
+    dest:
+      selector:
+        text:
+    dest_ip:
+      selector:
+        text:
+    dest_port:
+      selector:
+        text:
+    target:
+      selector:
+        text:
+    enabled:
+      selector:
+        boolean:
+
+remove_firewall_rule:
+  name: Remove firewall rule
+  description: Remove an existing firewall rule.
+  fields:
+    mac:
+      selector:
+        text:
+    rule_id:
+      selector:
+        text:
+
+get_firewall_rules:
+  name: Get firewall rules
+  description: Return configured firewall rule names and IDs.
+  fields:
+    mac:
+      selector:
+        text:
+
+add_port_forward:
+  name: Add port forward
+  description: Add a port forwarding rule.
+  fields:
+    mac:
+      selector:
+        text:
+    name:
+      selector:
+        text:
+    src:
+      selector:
+        text:
+    src_dport:
+      selector:
+        text:
+    proto:
+      selector:
+        text:
+    dest:
+      selector:
+        text:
+    dest_ip:
+      selector:
+        text:
+    dest_port:
+      selector:
+        text:
+    enabled:
+      selector:
+        boolean:
+
+remove_port_forward:
+  name: Remove port forward
+  description: Remove an existing port forwarding rule.
+  fields:
+    mac:
+      selector:
+        text:
+    rule_id:
+      selector:
+        text:
+    remove_all:
+      selector:
+        boolean:
+
+set_dmz:
+  name: Set DMZ
+  description: Configure DMZ (Demilitarized Zone) settings.
+  fields:
+    mac:
+      selector:
+        text:
+    enabled:
+      selector:
+        boolean:
+    dest_ip:
+      selector:
+        text:
+
+get_mcu_battery_config:
+  name: Get MCU battery config
+  description: Return MCU battery warning configuration.
+  fields:
+    mac:
+      selector:
+        text:
+
+set_mcu_battery_config:
+  name: Set MCU battery config
+  description: Configure MCU battery temperature and capacity warnings.
+  fields:
+    mac:
+      selector:
+        text:
+    capacity_enabled:
+      selector:
+        boolean:
+    capacity:
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+          mode: box
+    temp_high_enabled:
+      selector:
+        boolean:
+    temp_high:
+      selector:
+        number:
+          mode: box
+          unit_of_measurement: "°C"
+    temp_low_enabled:
+      selector:
+        boolean:
+    temp_low:
+      selector:
+        number:
+          mode: box
+          unit_of_measurement: "°C"
+
+get_mcu_oled_config:
+  name: Get MCU OLED config
+  description: Return MCU OLED screen display configuration.
+  fields:
+    mac:
+      selector:
+        text:
+
+set_mcu_oled_config:
+  name: Set MCU OLED config
+  description: Configure MCU OLED screen display sections.
+  fields:
+    mac:
+      selector:
+        text:
+    main:
+      selector:
+        boolean:
+    wifi_password:
+      selector:
+        boolean:
+    wifi_2g:
+      selector:
+        boolean:
+    wifi_5g:
+      selector:
+        boolean:
+    lan:
+      selector:
+        boolean:
+    vpn:
+      selector:
+        boolean:
+    custom:
+      selector:
+        boolean:
+    content:
+      selector:
+        text:
+
+kmwan_get_config:
+  name: Get KMWAN config
+  description: Return the current KMWAN multi-WAN configuration from the router.
+  fields:
+    mac:
+      selector:
+        text:
+
+kmwan_get_status:
+  name: Get KMWAN status
+  description: Return per-interface KMWAN link status from the router.
+  fields:
+    mac:
+      selector:
+        text:
+
+kmwan_set_config:
+  name: Set KMWAN config
+  description: Update the KMWAN multi-WAN configuration on the router.
+  fields:
+    mac:
+      selector:
+        text:
+    config:
+      selector:
+        object:
+      required: true
+
+kmwan_set_interface:
+  name: Set KMWAN interface
+  description: Update KMWAN detection settings for a single WAN interface.
+  fields:
+    mac:
+      selector:
+        text:
+    interface:
+      selector:
+        object:
+      required: true
+
+kmwan_set_sensitivity:
+  name: Set KMWAN sensitivity
+  description: Update the KMWAN detection sensitivity level and interval.
+  fields:
+    mac:
+      selector:
+        text:
+    sensitivity:
+      selector:
+        object:
+      required: true
+
+mwan3_get_config:
+  name: Get MWAN3 config
+  description: Return the current MWAN3 multi-WAN configuration from the router.
+  fields:
+    mac:
+      selector:
+        text:
+
+mwan3_get_status:
+  name: Get MWAN3 status
+  description: Return per-interface MWAN3 link status from the router.
+  fields:
+    mac:
+      selector:
+        text:
+
+mwan3_set_config:
+  name: Set MWAN3 config
+  description: Update the MWAN3 multi-WAN configuration on the router.
+  fields:
+    mac:
+      selector:
+        text:
+    config:
+      selector:
+        object:
+      required: true
+
+mwan3_set_interface:
+  name: Set MWAN3 interface
+  description: Update MWAN3 detection settings for a single WAN interface.
+  fields:
+    mac:
+      selector:
+        text:
+    interface:
+      selector:
+        object:
+      required: true
+
+parental_control_set_temporary_override:
+  name: Set parental control temporary override
+  description: Enable or disable a temporary brief rule for a parental control group.
+  fields:
+    mac:
+      selector:
+        text:
+    group_id:
+      selector:
+        text:
+      required: true
+    enabled:
+      selector:
+        boolean:
+      required: true
+    rule_id:
+      selector:
+        text:
+      required: true
+      example: "drop"
+    duration:
+      selector:
+        text:
+      required: false
+      example: "01:00:00"
+
+parental_control_set_filtering_mode:
+  name: Set parental control filtering mode
+  description: Set the router parental control filtering mode.
+  fields:
+    mac:
+      selector:
+        text:
+    mode:
+      selector:
+        number:
+          min: 0
+          max: 10
+          mode: box
+      required: true
+
+parental_control_update_signatures:
+  name: Update parental control signatures
+  description: Ask the router to update its parental control signature database.
+  fields:
+    mac:
+      selector:
+        text:
+
+access_control_set_mode:
+  name: Set access control mode
+  description: Switch device access control between blacklist and whitelist modes.
+  fields:
+    mac:
+      selector:
+        text:
+    mode:
+      selector:
+        select:
+          options:
+            - black
+            - white
+      required: true
+
+access_control_set_device_block:
+  name: Set device block
+  description: Block or unblock internet access for a client MAC address.
+  fields:
+    mac:
+      selector:
+        text:
+    src_mac:
+      name: Client MAC
+      selector:
+        text:
+      required: true
+    block:
+      selector:
+        boolean:
+      required: true
+
+parental_control_set_group_schedules:
+  name: Set parental control group schedules
+  description: Enable or bypass schedules for a parental control group.
+  fields:
+    mac:
+      selector:
+        text:
+    group_id:
+      selector:
+        text:
+      required: true
+    enabled:
+      selector:
+        boolean:
+      required: true
+
+playground:
+  name: API Playground
+  description: Send a custom JSON-RPC or ubus API request to the GL.iNet router. Returns the raw response.
+  fields:
+    mac:
+      name: Router MAC
+      description: Target router MAC address (optional).
+      selector:
+        text:
+      required: false
+    method:
+      name: Method
+      description: The JSON-RPC or ubus method to call. Use 'module/method' (e.g. 'system/get_info') for ubus calls, or a top-level RPC method (e.g. 'challenge').
+      selector:
+        text:
+      required: true
+      example: "system/get_info"
+    body:
+      name: Body
+      description: Optional parameters or body for the request.
+      selector:
+        object:
+      required: false
+      example:
+        delay: 0
+

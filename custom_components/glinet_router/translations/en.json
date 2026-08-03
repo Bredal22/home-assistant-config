@@ -1,0 +1,392 @@
+{
+  "title": "GL.iNet Router",
+  "config": {
+    "step": {
+      "user": {
+        "description": "Provide router details to link your GL.iNet device",
+        "data": {
+          "host": "Router Address",
+          "password": "Admin Password",
+          "consider_home": "Away Delay",
+          "scan_interval": "Update Interval",
+          "enabled_features": "Enabled features",
+          "wan_status_monitors": "Monitored WAN status sensors",
+          "add_all_devices": "Discover unknown devices",
+          "cleanup_devices": "Auto-cleanup unknown devices",
+          "unknown_devices_filter_mode": "Unknown Devices Filter Mode",
+          "unknown_devices_filter_select": "Select Unknown Devices",
+          "unknown_devices_filter_manual": "Unknown Devices Manual MAC Address List (One per line)"
+        },
+        "data_description": {
+          "host": "Type the router hostname, URL, or IP address.",
+          "password": "Enter the admin password configured on your GL.iNet router.",
+          "consider_home": "Number of seconds before a disconnected client is treated as away.",
+          "scan_interval": "Number of seconds between polling the router for updates.",
+          "enabled_features": "Choose the integration feature groups to set up. Disabled feature groups will not create their related entities or services.",
+          "wan_status_monitors": "Choose the interface and IP version checks to monitor. Known router interface IDs are shown with friendly names, such as Ethernet 1 and Repeater. GL.iNet reports 0 as up and 1 as down.",
+          "add_all_devices": "Automatically track and create entities for every device connected to the router, including those not yet integrated into Home Assistant.",
+          "cleanup_devices": "Set this to 0 to disable automatic cleanup. Any other number is treated as minutes; unknown discovered devices are removed after that period if they remain offline or disconnected.",
+          "unknown_devices_filter_mode": "Select whether the list of unknown devices behaves as a whitelist or blacklist. (Blank defaults to Blacklist which won't block anything)",
+          "unknown_devices_filter_select": "Select from currently discovered unknown devices to whitelist or blacklist.",
+          "unknown_devices_filter_manual": "Manually enter MAC addresses (one per line) of unknown devices to whitelist or blacklist."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not contact the router",
+      "invalid_auth": "Authentication failed with the supplied password",
+      "unknown": "An unexpected validation issue occurred"
+    },
+    "abort": {
+      "already_configured": "This router has already been configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "host": "Router Address",
+          "password": "Admin Password",
+          "consider_home": "Away Delay",
+          "scan_interval": "Update Interval",
+          "enabled_features": "Enabled features",
+          "wan_status_monitors": "Monitored WAN status sensors",
+          "add_all_devices": "Discover unknown devices",
+          "cleanup_devices": "Auto-cleanup unknown devices",
+          "unknown_devices_filter_mode": "Unknown Devices Filter Mode",
+          "unknown_devices_filter_select": "Select Unknown Devices",
+          "unknown_devices_filter_manual": "Unknown Devices Manual MAC Address List (One per line)"
+        },
+        "data_description": {
+          "host": "Type the router hostname, URL, or IP address.",
+          "password": "Enter the admin password configured on your GL.iNet router.",
+          "consider_home": "Number of seconds before a disconnected client is treated as away.",
+          "scan_interval": "Number of seconds between polling the router for updates.",
+          "enabled_features": "Choose the integration feature groups to set up. Disabled feature groups will not create their related entities or services.",
+          "wan_status_monitors": "Choose the interface and IP version checks to monitor. Known router interface IDs are shown with friendly names, such as Ethernet 1 and Repeater. GL.iNet reports 0 as up and 1 as down.",
+          "add_all_devices": "Automatically track and create entities for every device connected to the router, including those not yet integrated into Home Assistant.",
+          "cleanup_devices": "Set this to 0 to disable automatic cleanup. Any other number is treated as minutes; unknown discovered devices are removed after that period if they remain offline or disconnected.",
+          "unknown_devices_filter_mode": "Select whether the list of unknown devices behaves as a whitelist or blacklist. (Blank defaults to Blacklist which won't block anything)",
+          "unknown_devices_filter_select": "Select from currently discovered unknown devices to whitelist or blacklist.",
+          "unknown_devices_filter_manual": "Manually enter MAC addresses (one per line) of unknown devices to whitelist or blacklist."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_temp": {
+        "name": "CPU temperature"
+      },
+      "load_avg1": {
+        "name": "Load avg (1m)"
+      },
+      "load_avg5": {
+        "name": "Load avg (5m)"
+      },
+      "load_avg15": {
+        "name": "Load avg (15m)"
+      },
+      "memory_use": {
+        "name": "Memory usage"
+      },
+      "flash_use": {
+        "name": "Flash usage"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "connected_clients": {
+        "name": "Connected clients"
+      },
+      "total_download": {
+        "name": "Total download"
+      },
+      "total_upload": {
+        "name": "Total upload"
+      },
+      "cellular_signal": {
+        "name": "Cellular signal"
+      },
+      "cellular_network": {
+        "name": "Cellular network"
+      },
+      "sms_messages": {
+        "name": "Unread messages"
+      },
+      "repeater_state": {
+        "name": "Repeater state",
+        "state": {
+          "initializing": "Initializing",
+          "not_used": "Not used",
+          "connecting": "Connecting",
+          "connected": "Connected",
+          "failed": "Failed",
+          "wan_available": "WAN available"
+        }
+      },
+      "repeater_ssid": {
+        "name": "Repeater SSID"
+      },
+      "repeater_signal": {
+        "name": "Repeater signal"
+      },
+      "repeater_channel": {
+        "name": "Repeater channel",
+        "state": {
+          "2_4ghz": "2.4 GHz",
+          "5ghz": "5 GHz"
+        }
+      },
+      "repeater_ip": {
+        "name": "Repeater IP address"
+      },
+      "repeater_gateway": {
+        "name": "Repeater gateway"
+      },
+      "repeater_dns": {
+        "name": "Repeater DNS"
+      },
+      "repeater_bssid": {
+        "name": "Repeater BSSID"
+      },
+      "cellular_ipv4": {
+        "name": "Cellular WAN IPv4"
+      },
+      "cellular_ipv6": {
+        "name": "Cellular WAN IPv6"
+      },
+      "wg_server_users": {
+        "name": "WireGuard server users"
+      },
+      "ovpn_server_users": {
+        "name": "OpenVPN server users"
+      }
+    },
+    "binary_sensor": {
+      "internet": {
+        "name": "Internet"
+      },
+      "repeater_connected": {
+        "name": "Repeater connected"
+      },
+      "repeater_bare_mode": {
+        "name": "Repeater bare mode"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Reboot"
+      },
+      "disconnect_repeater": {
+        "name": "Disconnect repeater"
+      },
+      "scan_wifi": {
+        "name": "Scan WiFi networks"
+      }
+    },
+    "select": {
+      "wifi_network": {
+        "name": "WiFi network"
+      },
+      "repeater_band": {
+        "name": "Repeater band"
+      },
+      "parental_control_group": {
+        "name": "Parental control group"
+      }
+    },
+    "switch": {
+      "tailscale": {
+        "name": "Tailscale"
+      },
+      "repeater_auto_switch": {
+        "name": "Repeater auto-switch networks"
+      },
+      "repeater_bare_mode": {
+        "name": "Repeater bare mode"
+      },
+      "repeater_smart_reconnect": {
+        "name": "Repeater smart reconnect"
+      },
+      "wg_server": {
+        "name": "WG Server"
+      },
+      "ovpn_server": {
+        "name": "OpenVPN Server"
+      },
+      "zerotier": {
+        "name": "ZeroTier"
+      },
+      "led": {
+        "name": "System LED"
+      },
+      "adguard_enabled": {
+        "name": "AdGuard Home"
+      },
+      "adguard_dns_enabled": {
+        "name": "AdGuard Home DNS"
+      },
+      "parental_control": {
+        "name": "Parental control"
+      },
+      "internet_access": {
+        "name": "Internet access"
+      }
+    }
+  },
+  "services": {
+    "send_sms": {
+      "name": "Send SMS",
+      "description": "Sends a text message via the router modem.",
+      "fields": {
+        "recipient": {
+          "name": "Recipient",
+          "description": "The phone number to send the message to."
+        },
+        "text": {
+          "name": "Message",
+          "description": "The content of the text message."
+        }
+      }
+    },
+    "get_sms": {
+      "name": "Get SMS",
+      "description": "Fetches the current inbox from the router.",
+      "fields": {
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "refresh_sms": {
+      "name": "Refresh SMS",
+      "description": "Manually triggers an SMS poll.",
+      "fields": {
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "remove_sms": {
+      "name": "Remove SMS",
+      "description": "Deletes messages from the modem.",
+      "fields": {
+        "scope": {
+          "name": "Scope",
+          "description": "Delete single (10), all (11), read (1), or unread (0)."
+        },
+        "message_id": {
+          "name": "Message ID",
+          "description": "The unique ID of the message to delete (for scope 10)."
+        },
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "scan_wifi": {
+      "name": "Scan WiFi networks",
+      "description": "Scan for available WiFi networks to connect in repeater mode.",
+      "fields": {
+        "all_band": {
+          "name": "All bands",
+          "description": "Compatibility option. Requests a fresh router scan."
+        },
+        "dfs": {
+          "name": "Include DFS",
+          "description": "Compatibility option. Requests a fresh router scan."
+        },
+        "refresh": {
+          "name": "Refresh",
+          "description": "Force a fresh router scan instead of using cached scan results."
+        },
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "connect_wifi": {
+      "name": "Connect to WiFi",
+      "description": "Connect to an open or secured external WiFi network in repeater mode.",
+      "fields": {
+        "ssid": {
+          "name": "SSID",
+          "description": "The name of the network."
+        },
+        "password": {
+          "name": "Password",
+          "description": "The WiFi password. Required for secured networks; leave empty for open networks."
+        },
+        "remember": {
+          "name": "Remember",
+          "description": "Save this network for future use."
+        },
+        "bssid": {
+          "name": "BSSID",
+          "description": "The specific MAC address of the access point."
+        },
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "disconnect_wifi": {
+      "name": "Disconnect WiFi",
+      "description": "Disconnect from the current external WiFi network.",
+      "fields": {
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "get_saved_networks": {
+      "name": "Get saved networks",
+      "description": "Get list of saved WiFi networks for repeater mode.",
+      "fields": {
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "remove_saved_network": {
+      "name": "Remove saved network",
+      "description": "Remove a saved WiFi network from the router.",
+      "fields": {
+        "ssid": {
+          "name": "SSID",
+          "description": "The name of the network to remove."
+        },
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        }
+      }
+    },
+    "playground": {
+      "name": "API Playground",
+      "description": "Send a custom JSON-RPC or ubus request to the router.",
+      "fields": {
+        "mac": {
+          "name": "MAC address",
+          "description": "Optional MAC of the target router."
+        },
+        "method": {
+          "name": "Method",
+          "description": "The JSON-RPC or ubus method (e.g. system/get_info)."
+        },
+        "body": {
+          "name": "Body",
+          "description": "Optional parameters or body for the request."
+        }
+      }
+    }
+  }
+}
